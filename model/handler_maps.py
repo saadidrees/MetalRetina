@@ -536,11 +536,11 @@ def remap_unit_ids(coords):
     remapped_coords[:,0] = new_ids
     return remapped_coords
 
-def umask_metal_split(umaskcoords,frac_u_train=0.95):
+def umask_metal_split(umaskcoords,FRAC_U_TRTR=0.95):
     """
     unames = data_quality['uname_selectedUnits']
     u_idx = data_quality['idx_unitsToTake']    
-    frac_u_train=0.75
+    FRAC_U_TRTR=0.75
     umaskcoords = dinf['umaskcoords_train']
     """
     
@@ -555,7 +555,7 @@ def umask_metal_split(umaskcoords,frac_u_train=0.95):
         umaskcoords_t = umaskcoords[umaskcoords[:,1]==cell_types_unique[t],:]
         
         unitids = np.unique(umaskcoords_t[:,0])
-        n_tr = int((frac_u_train*len(unitids)))
+        n_tr = int((FRAC_U_TRTR*len(unitids)))
         unitids_tr = np.sort(np.random.choice(unitids,n_tr,replace=False))
         unitids_val = np.setdiff1d(unitids,unitids_tr)
                 

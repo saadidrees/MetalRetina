@@ -326,7 +326,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
 
    # ----  Dataloaders  
     MAX_RGCS = 1000
-    assert MAX_RGCS > c_tr.max(), 'MAX_RGCS limit lower than maximum RGCs in a dataset'
+    assert MAX_RGCS > c_exp_tr.sum(axis=1).max(), 'MAX_RGCS limit lower than maximum RGCs in a dataset'
     # MAX_RGCS=int(c_tr.sum())
 
     n_tasks = len(fname_data_train_val_test_all)    

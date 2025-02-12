@@ -310,6 +310,132 @@ def train_step_metal(mdl_state,batch,weights_output,lr,dinf_tr):        # Make u
 
     return local_losses_summed,mdl_state,weights_output,local_grads_summed
 
+@jax.jit
+def train_step_maml(mdl_state,batch,weights_output,lr,dinf_tr):        # Make unit vectors then scale by num of RGCs
+    """
+    State is the grand model state that actually gets updated
+    state_task is the "state" after gradients are applied for a specific task
+        task_idx = 1
+        conv_kern = conv_kern_all[task_idx]
+        conv_bias = conv_bias_all[task_idx]
+        train_x = train_x[task_idx]
+        train_y_tr = train_y_tr[task_idx]
+        train_y_val = train_y_val[task_idx]
+        coords_tr = umaskcoords_trtr[task_idx]
+        coords_val = umaskcoords_trval[task_idx]
+        N_tr = N_trtr[task_idx]
+        N_val = N_trval[task_idx]
+        mask_tr = mask_trtr[task_idx]
+        mask_val = mask_trval[task_idx]
+        
+        loss,mdl_state,weights_output,grads = train_step_metal(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
+    """
+    @jax.jit
+    def maml_grads(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,train_x,train_y_tr,train_y_val,coords_tr,coords_val,N_tr,N_val,mask_tr,mask_val):
+
+        # Split the batch into inner and outer training sets
+        # PARAMETERIZE this
+        frac_s_train = 0.5
+        len_data = train_x.shape[0]
+        len_s_train = int(len_data*frac_s_train)
+        
+        batch_train = (train_x[:len_s_train],train_y_tr[:len_s_train])
+        batch_val = (train_x[len_s_train:],train_y_val[len_s_train:])
+        # N_points_val = N_task_val*segment_size
+
+        # Make local model by using global params but local dense layer weights
+        local_params = global_params.copy()
+        # local_params['output']['kernel'] = conv_kern
+        # local_params['output']['bias'] = conv_bias
+        local_mdl_state = mdl_state.replace(params=local_params)
+
+        # Calculate gradients of the local model wrt to local params    
+        grad_fn = jax.value_and_grad(task_loss,argnums=1,has_aux=True)
+        (local_loss_train,y_pred_train),local_grads = grad_fn(local_mdl_state,local_params,batch_train,coords_tr,N_tr,segment_size,mask_tr)
+        
+        # scale the local gradients according to ADAM's first step. Helps to stabilize
+        # And update the parameters
+        local_params = jax.tree_map(lambda p, g: p - lr*(g/(jnp.abs(g)+1e-8)), local_params, local_grads)
+
+        # Calculate gradients of the loss of the resulting local model but using the validation set
+        # local_mdl_state = mdl_state.replace(params=local_params)
+        (local_loss_val,y_pred_val),local_grads_val = grad_fn(local_mdl_state,local_params,batch_val,coords_val,N_val,segment_size,mask_val)
+        
+        # Update only the Dense layer weights since we retain it
+        # local_params_val = jax.tree_map(lambda p, g: p - lr*(g/(jnp.abs(g)+1e-8)), local_params, local_grads_val)
+        
+        # Get the direction of generalization
+        # local_grads_total = jax.tree_map(lambda g_1, g_2: g_1+g_2, local_grads,local_grads_val)
+        
+        # Normalize the grads to unit vector
+        # local_grads_total = jax.tree_map(lambda g: g/jnp.linalg.norm(g), local_grads_total)
+        
+        # Scale vectors by num of RGCs
+        # scaleFac = (N_tr+N_val)/MAX_RGCS
+        # local_grads_total = jax.tree_map(lambda g: g*scaleFac, local_grads_total)
+
+
+
+        # Record dense layer weights
+        # conv_kern = local_params_val['output']['kernel']
+        # conv_bias = local_params_val['output']['bias']
+        
+        return local_loss_val,y_pred_val,local_mdl_state
+    
+    def maml_loss(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,train_x,train_y_tr,train_y_val,umaskcoords_trtr,umaskcoords_trval,N_trtr,N_trval,mask_trtr,mask_trval):
+        
+        local_losses,local_y_preds,local_mdl_states = jax.vmap(Partial(maml_grads,mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size))\
+                                                                                                                  (train_x,train_y_tr,train_y_val,
+                                                                                                                   umaskcoords_trtr,umaskcoords_trval,N_trtr,N_trval,mask_trtr,mask_trval)
+
+        losses = local_losses.sum()
+        
+        return losses,(local_y_preds)
+    
+    """
+    batch_train = next(iter(dataloader_train)); batch=batch_train; 
+    """
+    global_params = mdl_state.params
+    
+    train_x,train_y_tr,train_y_val = batch
+    conv_kern_all,conv_bias_all = weights_output
+    umaskcoords_trtr = dinf_tr['umaskcoords_trtr']
+    umaskcoords_trval = dinf_tr['umaskcoords_trval']
+    N_trtr = dinf_tr['N_trtr']
+    N_trval = dinf_tr['N_trval']
+    mask_trtr = dinf_tr['maskunits_trtr']
+    mask_trval = dinf_tr['maskunits_trval']
+
+    MAX_RGCS = dinf_tr['MAX_RGCS']
+    cell_types_unique = dinf_tr['cell_types_unique']
+    segment_size = dinf_tr['segment_size']
+
+    # maxRGCs = mask_unitsToTake_all.shape[-1] #jnp.sum(mask_unitsToTake_all)
+    
+    grad_fn = jax.value_and_grad(maml_loss,argnums=1,has_aux=True)
+    (losses,rgb),grads = grad_fn(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,train_x,train_y_tr,train_y_val,umaskcoords_trtr,umaskcoords_trval,N_trtr,N_trval,mask_trtr,mask_trval)
+
+    
+    mdl_state = mdl_state.apply_gradients(grads=grads)
+    conv_kern = mdl_state.params['output']['kernel']
+    conv_bias = mdl_state.params['output']['bias']
+    weights_output = (conv_kern,conv_bias)
+
+           
+    # print(local_losses_summed)   
+        
+    
+    """
+    for key in local_grads_summed.keys():
+        try:
+            print('%s kernel: %e\n'%(key,jnp.sum(abs(local_grads_summed[key]['kernel']))))
+        except:
+            print('%s bias: %e\n'%(key,jnp.sum(abs(local_grads_summed[key]['bias']))))
+    
+    """
+
+    return losses,mdl_state,weights_output,grads
+
 def eval_step(state,batch_val,dinf_batch_val,n_batches=1e5):
     """
     idx_task = idx_master
@@ -494,15 +620,16 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
         # t = time.time()
         # batch_train = next(iter(dataloader_train)); batch=batch_train; 
         for batch_train in dataloader_train:
-            # elap = time.time()-t
-            # print(elap)
             current_lr = lr_schedule(mdl_state.step)               
             
             if approach == 'metal':
                 loss,mdl_state,weights_output,grads = train_step_metal(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
+            elif approach == 'maml'
             else:
                 print('Invalid APPROACH')
                 break
+            # elap = time.time()-t
+            # print(elap)
 
             # print(loss)
             loss_batch_train.append(loss)
