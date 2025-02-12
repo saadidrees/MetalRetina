@@ -624,7 +624,8 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
             
             if approach == 'metal':
                 loss,mdl_state,weights_output,grads = train_step_metal(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
-            elif approach == 'maml'
+            elif approach == 'maml':
+                loss,mdl_state,weights_output,grads = train_step_maml(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
             else:
                 print('Invalid APPROACH')
                 break
