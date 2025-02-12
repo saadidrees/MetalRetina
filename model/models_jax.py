@@ -21,7 +21,7 @@ def model_definitions():
         How to arrange the datasets depends on which model is being used
     """
     
-    models_2D = ('CNN2D','CNN2D_MAXPOOL','CNN2D_FT','CNN2D_FT2','CNN2D_LNORM','CNN2D_MAP')
+    models_2D = ('CNN2D','CNN2D_MAXPOOL','CNN2D_FT','CNN2D_FT2','CNN2D_LNORM','CNN2D_MAP','CNN2D_MAPTAF')
     
     models_3D = ('CNN_3D','PR_CNN3D')
     
@@ -341,8 +341,111 @@ class CNN2D_LNORM(nn.Module):
         
         return outputs    
     
-    
 class CNN2D_MAP(nn.Module):
+    
+    chan1_n : int
+    filt1_size : int
+    chan2_n : int
+    filt2_size : int
+    chan3_n : int
+    filt3_size : int
+    chan4_n : int
+    filt4_size : int
+    nout : int    
+    filt_temporal_width : int    
+    BatchNorm : bool
+    MaxPool : int
+    # dtype : type
+    
+    # def __init__(self, **kwargs):
+    #     self.__dict__.update(kwargs)
+
+    @nn.compact
+    def __call__(self,inputs,training: bool,**kwargs):       
+        sigma=0.01       # sigma for noise
+        y = jnp.moveaxis(inputs,1,-1)       # Because jax is channels last
+        # y = nn.LayerNorm(feature_axes=-1,reduction_axes=-1,epsilon=1e-7)(y)        # z-score the input across temporal dimension
+        y = nn.Conv(features=self.chan1_n, kernel_size=(self.filt1_size,self.filt1_size),padding='SAME', kernel_init=glorot_uniform())(y)
+        
+        if self.MaxPool > 0:
+            y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
+
+        if self.BatchNorm == 1:
+            rgb = y.shape[1:]
+            y = y.reshape(y.shape[0],-1)
+            y = nn.LayerNorm(use_bias=True,use_scale=True)(y)
+            y = y.reshape(y.shape[0],*rgb)
+
+            # y = nn.BatchNorm(axis=-1,epsilon=1e-7,use_running_average=not training)(y)
+
+        # y = y + sigma*jax.random.normal(jax.random.PRNGKey(1),y.shape)
+        # y = nn.relu(y)
+        y = TrainableAF()(y)
+
+        
+        # second layer
+        if self.chan2_n>0:
+            y = nn.Conv(features=self.chan2_n, kernel_size=(self.filt2_size,self.filt2_size),padding='SAME', kernel_init=glorot_uniform())(y)
+            
+            if self.MaxPool > 0:
+                y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
+
+            if self.BatchNorm == 1:
+                rgb = y.shape[1:]
+                y = y.reshape(y.shape[0],-1)
+                y = nn.LayerNorm(use_bias=True,use_scale=True)(y)
+                y = y.reshape(y.shape[0],*rgb)
+
+            # y = y + sigma*jax.random.normal(jax.random.PRNGKey(1),y.shape)
+            # y = nn.relu(y)
+            y = TrainableAF()(y)
+
+
+        # Third layer
+        if self.chan3_n>0:
+            y = nn.Conv(features=self.chan3_n, kernel_size=(self.filt3_size,self.filt3_size),padding='SAME', kernel_init=glorot_uniform())(y)
+            
+            if self.MaxPool > 0:
+                y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
+
+            if self.BatchNorm == 1:
+                rgb = y.shape[1:]
+                y = y.reshape(y.shape[0],-1)
+                y = nn.LayerNorm(use_bias=True,use_scale=True)(y)
+                y = y.reshape(y.shape[0],*rgb)
+
+            # y = y + sigma*jax.random.normal(jax.random.PRNGKey(1),y.shape)
+            # y = nn.relu(y)
+            y = TrainableAF()(y)
+
+            
+        if self.chan4_n>0:
+            y = nn.Conv(features=self.chan4_n, kernel_size=(self.filt4_size,self.filt4_size),padding='SAME', kernel_init=glorot_uniform())(y)
+           
+            if self.BatchNorm == 1:
+                rgb = y.shape[1:]
+                y = y.reshape(y.shape[0],-1)
+                y = nn.LayerNorm(use_bias=True,use_scale=True)(y)
+                y = y.reshape(y.shape[0],*rgb)
+                
+            # y = y + sigma*jax.random.normal(jax.random.PRNGKey(1),y.shape)
+            # y = nn.relu(y)
+            y = TrainableAF()(y)
+
+
+        
+        rgb = y.shape[1:]
+        y = y.reshape(y.shape[0],-1)
+        y = nn.LayerNorm(use_bias=True,use_scale=True)(y)
+        y = y.reshape(y.shape[0],*rgb)
+
+        y = nn.Conv(features=self.nout, kernel_size=(1,1),padding='SAME', kernel_init=he_normal(),name='output')(y)
+        outputs = nn.softplus(y)
+        self.sow('intermediates', 'dense_activations', outputs)
+
+        return outputs        
+    
+class CNN2D_MAPTAF(nn.Module):
     
     chan1_n : int
     filt1_size : int

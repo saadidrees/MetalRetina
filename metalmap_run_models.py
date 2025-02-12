@@ -634,7 +634,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         
         loss_currEpoch_master,loss_epoch_train,loss_epoch_val,mdl_state,weights_dense,fev_epoch_train,fev_epoch_val = train_metalmaps.train(mdl_state,weights_output,config,\
                                                                                       dataloader_train,dataloader_val,dinf_tr,dinf_val,nb_epochs,path_model_save,save=True,lr_schedule=lr_schedule,\
-                                                                                          approach=APPROACH,step_start=initial_epoch+1)
+                                                                                          APPROACH=APPROACH,step_start=initial_epoch+1)
         _ = gc.collect()
             
     t_elapsed = time.time()-t
