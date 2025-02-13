@@ -57,7 +57,7 @@ def arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf
     dinf['unit_types'] = parameters['unit_types']
     dinf['unames'] = bytestostring(parameters['unames'])
     
-    dinf,data_train,data_val = remove_boundary_units(dinf,data_train,data_val)
+    # dinf,data_train,data_val = remove_boundary_units(dinf,data_train,data_val)  # This step is already done in dataset creation stage
     
     
     if info_unitSplit==None and frac_train_units==1:
@@ -284,9 +284,9 @@ def maps_validation_split(data_train,data_val,idx_train,idx_val,unit_locs,unit_t
     spikes_val = spikes_val[:,idx_val]
     # unit_masks_val = unit_masks[idx_val]
 
-
     X_y_train,_,_ = buildRespMap(X_tr,y_units_train,spikes_train,unit_locs_train,unit_types_train)
     X_y_val,_,_ = buildRespMap(X_val,y_units_val,spikes_val,unit_locs_val,unit_types_val)
+   
     
     return X_y_train,X_y_val
 
@@ -575,7 +575,7 @@ def umask_metal_split(umaskcoords,FRAC_U_TRTR=0.95):
     return umaskcoords_tr_subtr,umaskcoords_tr_subval,umaskcoords_tr_subtr_remap,umaskcoords_tr_subval_remap
 
 
-def prepare_metaldataset(data_train,umaskcoords_tr_tr,umaskcoords_tr_val,frac_stim_train=0.5,bgr=0,shuffle=True):
+def prepare_metaldataset(data_train,umaskcoords_tr_tr,umaskcoords_tr_val,frac_stim_train=0.5,bgr=0):
     """
     X = data_train.X
     y = data_train.y
@@ -586,10 +586,13 @@ def prepare_metaldataset(data_train,umaskcoords_tr_tr,umaskcoords_tr_val,frac_st
     bgr = 0
     cell_types_unique = np.unique(umaskcoords_tr_tr[:,1])
     
-    X = data_train.X.copy()
-    train_y_tr = data_train.y.copy()
-    train_y_val = data_train.y.copy()
     
+    nsamps_tr = int(np.floor(frac_stim_train*len(np.arange(data_train.X.shape[0]))))
+    train_y_tr = data_train.y[:nsamps_tr].copy()
+    train_y_val = data_train.y[-nsamps_tr:].copy()
+
+    assert train_y_tr.shape[0] == train_y_val.shape[0],'trtr and trval lengths not the same'
+
     t=0
     for t in range(len(cell_types_unique)):
         
@@ -603,8 +606,8 @@ def prepare_metaldataset(data_train,umaskcoords_tr_tr,umaskcoords_tr_val,frac_st
         b = umaskcoords_tr_tr[mask,2:4]
         train_y_val[:,b[:,1],b[:,0],t] = bgr
 
-    data_tr_tr = Exptdata_spikes(data_train.X,train_y_tr,data_train.spikes)
-    data_tr_val = Exptdata_spikes(data_train.X,train_y_val,data_train.spikes)
+    data_tr_tr = Exptdata(list(data_train.X[:nsamps_tr]),list(train_y_tr))
+    data_tr_val = Exptdata(list(data_train.X[-nsamps_tr:]),list(train_y_val))
 
     return data_tr_tr,data_tr_val
 

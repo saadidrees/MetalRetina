@@ -122,9 +122,10 @@ def clip_grads(grads, clip_value=1.0):
         grads
     )
     return clipped_grads
+MAX_RGCS = 600
 
 @jax.jit
-def pred_psfavg(y_pred,coords,segment_size):   
+def pred_psfavg(y_pred,coords,segment_size,MAX_RGCS=MAX_RGCS):   
     """
     test_sumseg = np.zeros((83,16))
     u_id_unique = np.unique(u_id)
@@ -133,7 +134,7 @@ def pred_psfavg(y_pred,coords,segment_size):
         idx = u_id==u_id_unique[u]
         test_sumseg[u,:] = np.sum(y_pred_allpixs[idx,:],axis=0)
     """
-    MAX_RGCS = 1000#jnp.array(MAX_RGCS,int)
+    # MAX_RGCS = 600#jnp.array(MAX_RGCS,int)
     
     spatial_y = coords[:,3]  # Shape: (M,)
     spatial_x = coords[:,2]  # Shape: (M,)
@@ -211,16 +212,20 @@ def train_step_metal(mdl_state,batch,weights_output,lr,dinf_tr):        # Make u
         loss,mdl_state,weights_output,grads = train_step_metal(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
     """
     @jax.jit
-    def metal_grads(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,train_x,train_y_tr,train_y_val,coords_tr,coords_val,N_tr,N_val,mask_tr,mask_val,conv_kern,conv_bias):
+    def metal_grads(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,train_x_tr,train_y_tr,train_x_val,train_y_val,coords_tr,coords_val,N_tr,N_val,mask_tr,mask_val,conv_kern,conv_bias):
 
         # Split the batch into inner and outer training sets
         # PARAMETERIZE this
-        frac_s_train = 0.5
-        len_data = train_x.shape[0]
-        len_s_train = int(len_data*frac_s_train)
+        # frac_s_train = 0.5
+        # len_data = train_x.shape[0]
+        # len_s_train = int(len_data*frac_s_train)
         
-        batch_train = (train_x[:len_s_train],train_y_tr[:len_s_train])
-        batch_val = (train_x[len_s_train:],train_y_val[len_s_train:])
+        # batch_train = (train_x[:len_s_train],train_y_tr[:len_s_train])
+        # batch_val = (train_x[len_s_train:],train_y_val[len_s_train:])
+        
+        batch_train = (train_x_tr,train_y_tr)
+        batch_val = (train_x_val,train_y_val)
+
         # N_points_val = N_task_val*segment_size
 
         # Make local model by using global params but local dense layer weights
@@ -267,7 +272,7 @@ def train_step_metal(mdl_state,batch,weights_output,lr,dinf_tr):        # Make u
     """
     global_params = mdl_state.params
     
-    train_x,train_y_tr,train_y_val = batch
+    train_x_tr,train_y_tr,train_x_val,train_y_val = batch
     conv_kern_all,conv_bias_all = weights_output
     umaskcoords_trtr = dinf_tr['umaskcoords_trtr']
     umaskcoords_trval = dinf_tr['umaskcoords_trval']
@@ -283,7 +288,7 @@ def train_step_metal(mdl_state,batch,weights_output,lr,dinf_tr):        # Make u
     # maxRGCs = mask_unitsToTake_all.shape[-1] #jnp.sum(mask_unitsToTake_all)
     local_losses,local_y_preds,local_mdl_states,local_grads_all,local_kerns,local_biases = jax.vmap(Partial(metal_grads,\
                                                                                                               mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size))\
-                                                                                                              (train_x,train_y_tr,train_y_val,
+                                                                                                              (train_x_tr,train_y_tr,train_x_val,train_y_val,
                                                                                                                umaskcoords_trtr,umaskcoords_trval,N_trtr,N_trval,mask_trtr,mask_trval,
                                                                                                                conv_kern_all,conv_bias_all)
                   
@@ -332,16 +337,16 @@ def train_step_maml(mdl_state,batch,weights_output,lr,dinf_tr):        # Make un
         loss,mdl_state,weights_output,grads = train_step_metal(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
     """
     @jax.jit
-    def maml_grads(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,train_x,train_y_tr,train_y_val,coords_tr,coords_val,N_tr,N_val,mask_tr,mask_val,conv_kern,conv_bias):
+    def maml_grads(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,train_x_tr,train_y_tr,train_x_val,train_y_val,coords_tr,coords_val,N_tr,N_val,mask_tr,mask_val,conv_kern,conv_bias):
 
         # Split the batch into inner and outer training sets
         # PARAMETERIZE this
-        frac_s_train = 0.5
-        len_data = train_x.shape[0]
-        len_s_train = int(len_data*frac_s_train)
+        # frac_s_train = 0.5
+        # len_data = train_x.shape[0]
+        # len_s_train = int(len_data*frac_s_train)
         
-        batch_train = (train_x[:len_s_train],train_y_tr[:len_s_train])
-        batch_val = (train_x[len_s_train:],train_y_val[len_s_train:])
+        batch_train = (train_x_tr,train_y_tr)
+        batch_val = (train_x_val,train_y_val)
         # N_points_val = N_task_val*segment_size
 
         # Make local model by using global params but local dense layer weights
@@ -388,7 +393,7 @@ def train_step_maml(mdl_state,batch,weights_output,lr,dinf_tr):        # Make un
     """
     global_params = mdl_state.params
     
-    train_x,train_y_tr,train_y_val = batch
+    train_x_tr,train_y_tr,train_x_val,train_y_val = batch
     conv_kern_all,conv_bias_all = weights_output
     umaskcoords_trtr = dinf_tr['umaskcoords_trtr']
     umaskcoords_trval = dinf_tr['umaskcoords_trval']
@@ -404,7 +409,7 @@ def train_step_maml(mdl_state,batch,weights_output,lr,dinf_tr):        # Make un
     # maxRGCs = mask_unitsToTake_all.shape[-1] #jnp.sum(mask_unitsToTake_all)
     local_losses,local_y_preds,local_mdl_states,local_grads_all,local_kerns,local_biases = jax.vmap(Partial(maml_grads,\
                                                                                                               mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size))\
-                                                                                                              (train_x,train_y_tr,train_y_val,
+                                                                                                              (train_x_tr,train_y_tr,train_x_val,train_y_val,
                                                                                                                umaskcoords_trtr,umaskcoords_trval,N_trtr,N_trval,mask_trtr,mask_trval,
                                                                                                                conv_kern_all,conv_bias_all)
                   
@@ -613,7 +618,7 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
     for epoch in tqdm(range(step_start,nb_epochs)):
         _ = gc.collect()
         loss_batch_train=[]
-        # t = time.time()
+        t = time.time()
         # batch_train = next(iter(dataloader_train)); batch=batch_train; 
         for batch_train in dataloader_train:
             current_lr = lr_schedule(mdl_state.step)               
@@ -625,8 +630,8 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
             else:
                 print('Invalid APPROACH')
                 break
-            # elap = time.time()-t
-            # print(elap)
+            elap = time.time()-t
+            print(elap)
 
             # print(loss)
             loss_batch_train.append(loss)

@@ -22,7 +22,7 @@ base = '/home/saad/data/'
 
 
 data_pers = 'ej'
-expDate = ('trainList_20241115MAPS',) #('trainList_20241115a',)
+expDate = ('trainList_8M',) #('trainList_20241115a',)
 
 APPROACH = 'metal' 
 expFold = APPROACH 
@@ -65,7 +65,7 @@ chan4_n=128#50
 filt4_size=3
 filt4_3rdDim=0
 nb_epochs=10#42         # setting this to 0 only runs evaluation
-bz_ms=4#64#10000#5000
+bz_ms=16#64#10000#5000
 BatchNorm=1
 MaxPool=2
 runOnCluster=0
@@ -73,7 +73,7 @@ num_trials=1
 
 BatchNorm_train = 1
 saveToCSV=1
-trainingSamps_dur = 2#1#20 #-1 #0.05 # minutes per dataset
+trainingSamps_dur = -1#1#20 #-1 #0.05 # minutes per dataset
 validationSamps_dur=0.5
 testSamps_dur=0.5
 USE_WANDB = 0

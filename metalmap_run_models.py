@@ -194,18 +194,21 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
 
 
         dinf['umaskcoords_trtr'],dinf['umaskcoords_trval'],dinf['umaskcoords_trtr_remap'],dinf['umaskcoords_trval_remap'] = handler_maps.umask_metal_split(dinf['umaskcoords_train'],FRAC_U_TRTR=FRAC_U_TRTR)
-        data_trtr,data_trval = handler_maps.prepare_metaldataset(data_train, dinf['umaskcoords_trtr'],dinf['umaskcoords_trval'],bgr=0)
+        data_trtr,data_trval = handler_maps.prepare_metaldataset(data_train, dinf['umaskcoords_trtr'],dinf['umaskcoords_trval'],bgr=0,frac_stim_train=0.5)
 
-
-        dict_train[fname_data_train_val_test_all[d]] = data_train
+        del data_train, data_test
+        
+        # dict_train[fname_data_train_val_test_all[d]] = data_train
         dict_trtr[fname_data_train_val_test_all[d]] = data_trtr
         dict_trval[fname_data_train_val_test_all[d]] = data_trval
 
         dict_val[fname_data_train_val_test_all[d]] = data_val
-        dict_test[fname_data_train_val_test_all[d]] = data_test
+        # dict_test[fname_data_train_val_test_all[d]] = data_test
         dict_dinf[fname_data_train_val_test_all[d]] = dinf
         unames_allDsets.append(parameters['unames'])
-        nsamps_alldsets_loaded.append(data_train.X.shape[0])
+        # nsamps_alldsets_loaded.append(data_trtr.X.shape[0])
+        nsamps_alldsets_loaded.append(len(data_trtr.X))
+
         
 
     # To make datasets equal length (for vectorization)
@@ -268,25 +271,25 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     d=0
     for d in range(len(fname_data_train_val_test_all)):
         print(fname_data_train_val_test_all[d])
-        data_train = dict_train[fname_data_train_val_test_all[d]]
+        # data_train = dict_train[fname_data_train_val_test_all[d]]
         data_trtr = dict_trtr[fname_data_train_val_test_all[d]]
         data_trval = dict_trval[fname_data_train_val_test_all[d]]
 
-        data_test = dict_test[fname_data_train_val_test_all[d]]
+        # data_test = dict_test[fname_data_train_val_test_all[d]]
         data_val = dict_val[fname_data_train_val_test_all[d]]
         
         if mdl_name in modelNames_2D:
-            data_train = prepare_data_cnn2d_maps(data_train,temporal_width_prepData,MAKE_LISTS=True)     # [samples,temporal_width,rows,columns]
+            # data_train = prepare_data_cnn2d_maps(data_train,temporal_width_prepData,MAKE_LISTS=True)     # [samples,temporal_width,rows,columns]
             data_trtr = prepare_data_cnn2d_maps(data_trtr,temporal_width_prepData,MAKE_LISTS=True)     # [samples,temporal_width,rows,columns]
             data_trval = prepare_data_cnn2d_maps(data_trval,temporal_width_prepData,MAKE_LISTS=True)     # [samples,temporal_width,rows,columns]
 
-            data_test = prepare_data_cnn2d_maps(data_test,temporal_width_prepData)
+            # data_test = prepare_data_cnn2d_maps(data_test,temporal_width_prepData)
             data_val = prepare_data_cnn2d_maps(data_val,temporal_width_prepData,MAKE_LISTS=True)   
             
             # If a dataset is shorter than the max one, then just repeat it so we can still vectorize everything
-            if len(data_train.X)<(nsamps_max-temporal_width_prepData):
+            if len(data_trtr.X)<(nsamps_max-temporal_width_prepData):
                 
-                data_train = handler_maps.expand_dataset(data_train,nsamps_max,temporal_width_prepData)
+                # data_train = handler_maps.expand_dataset(data_train,nsamps_max,temporal_width_prepData)
                 data_trtr = handler_maps.expand_dataset(data_trtr,nsamps_max,temporal_width_prepData)
                 data_trval = handler_maps.expand_dataset(data_trval,nsamps_max,temporal_width_prepData)
 
@@ -299,15 +302,15 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         else:
             raise ValueError('model not found')
     
-        dict_train[fname_data_train_val_test_all[d]] = data_train
+        # dict_train[fname_data_train_val_test_all[d]] = data_train
         dict_trtr[fname_data_train_val_test_all[d]] = data_trtr
         dict_trval[fname_data_train_val_test_all[d]] = data_trval
 
-        dict_test[fname_data_train_val_test_all[d]] = data_test
+        # dict_test[fname_data_train_val_test_all[d]] = data_test
         dict_val[fname_data_train_val_test_all[d]] = data_val
    
     # Shuffle just the training dataset
-    dict_train = dataloaders.shuffle_dataset(dict_train)    
+    # dict_train = dataloaders.shuffle_dataset(dict_train)    
     
     # data_train = dataset_shuffle(data_train,n_train)
 
@@ -325,7 +328,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     """
 
    # ----  Dataloaders  
-    MAX_RGCS = 1000
+    MAX_RGCS = 600
     assert MAX_RGCS > c_exp_tr.sum(axis=1).max(), 'MAX_RGCS limit lower than maximum RGCs in a dataset'
     # MAX_RGCS=int(c_tr.sum())
 
@@ -338,7 +341,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     for d in range(len(fname_data_train_val_test_all)):
         dset = fname_data_train_val_test_all[d]
        
-        rgb = dataloaders.RetinaDatasetTRVALMAPS(dict_trtr[dset].X,dict_trtr[dset].y,dict_trval[dset].y,transform=None)
+        rgb = dataloaders.RetinaDatasetTRVALMAPS(dict_trtr[dset].X,dict_trtr[dset].y,dict_trval[dset].X,dict_trval[dset].y,transform=None)
         Retinadatasets_train.append(rgb)
        
         rgb = dataloaders.RetinaDatasetMAML(dict_val[dset].X,dict_val[dset].y,transform=None)
@@ -349,7 +352,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     batch_size_train = bz_ms
     combined_dataset = dataloaders.CombinedDatasetTRVALMAPS(Retinadatasets_train,num_samples=batch_size_train)
     dataloader_train = DataLoader(combined_dataset,batch_size=1,collate_fn=dataloaders.jnp_collate_MAML,shuffle=False)
-    batch = next(iter(dataloader_train));a,b,c=batch
+    batch = next(iter(dataloader_train));a,b,c,d=batch
        
     batch_size_val = bz_ms
     combined_dataset = dataloaders.CombinedDataset(Retinadatasets_val,datasets_q=None,num_samples=batch_size_val)
@@ -429,7 +432,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         dset = fname_data_train_val_test_all[d]
         rgb = re.split('_',os.path.split(dset)[-1])[0]
         dset_names.append(rgb)
-        nsamps_train = nsamps_train+len(dict_train[dset].X)
+        nsamps_train = nsamps_train+len(dict_trtr[dset].X)+len(dict_trval[dset].X)
     
     run_info = dict(
                     nsamps_train=nsamps_train,
@@ -484,9 +487,9 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     """
     
     
-    inp_shape = dict_train[dset].X[0].shape
-    out_shape = dict_train[dset].y[0].shape[-1]
-    DTYPE = dict_train[dset].X[0].dtype
+    inp_shape = dict_trtr[dset].X[0].shape
+    out_shape = dict_trtr[dset].y[0].shape[-1]
+    DTYPE = dict_trtr[dset].X[0].dtype
 
     fname_model,dict_params = model.utils_si.modelFileName(U=len(expDates),P=pr_temporal_width,T=temporal_width,CB_n=chans_bp,
                                                         C1_n=chan1_n,C1_s=filt1_size,C1_3d=filt1_3rdDim,
@@ -606,7 +609,9 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
                       path_dataset_base=path_dataset_base,path_existing_mdl=path_existing_mdl,nb_epochs=nb_epochs,bz_ms=bz_ms,runOnCluster=runOnCluster,USE_CHUNKER=USE_CHUNKER,
                       trainingSamps_dur=trainingSamps_dur_orig,validationSamps_dur=validationSamps_dur,CONTINUE_TRAINING=CONTINUE_TRAINING,
                       idxStart_fixedLayers=idxStart_fixedLayers,idxEnd_fixedLayers=idxEnd_fixedLayers,
-                      info=info,lr=rgb_lrs,lr_fac=lr_fac,use_lrscheduler=use_lrscheduler,lr_schedule=lr_schedule,batch_size=bz,initial_epoch=initial_epoch)
+                      info=info,lr=rgb_lrs,lr_fac=lr_fac,use_lrscheduler=use_lrscheduler,lr_schedule=lr_schedule,batch_size=bz,initial_epoch=initial_epoch,
+                      FRAC_U_TRTR=FRAC_U_TRTR)
+    
     for key in dict_params.keys():
         params_txt[key] = dict_params[key]
     

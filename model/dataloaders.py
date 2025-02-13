@@ -245,50 +245,54 @@ def jnp_collate_MAML(batch):
 
 
 class RetinaDatasetTRVALMAPS(torch.utils.data.Dataset):
-    def __init__(self,X,y_trtr,y_trval,transform=None):
+    def __init__(self,X_trtr,y_trtr,X_trval,y_trval,transform=None):
         self.transform=transform
         
                     
-        self.X = X
+        self.X_trtr = X_trtr
         self.y_trtr = y_trtr
+        self.X_trval = X_trval
         self.y_trval = y_trval
 
         
     def __len__(self):
-        return len(self.X)
+        return len(self.X_trtr)
 
         
     def __getitem__(self,index):
         if self.transform==None:
-            X = self.X[index]
+            X_trtr = self.X_trtr[index]
             y_trtr = self.y_trtr[index]
+            X_trval = self.X_trval[index]
             y_trval = self.y_trval[index]
 
 
-        elif self.transform=='jax':
-            X = jnp.array(self.X[index])
+        elif self.transform=='jaX_trtr':
+            X_trtr = jnp.array(self.X_trtr[index])
             y_trtr = jnp.array(self.y_trtr[index])
+            X_trval = jnp.array(self.X_trval[index])
             y_trval = jnp.array(self.y_trval[index])
 
 
         elif self.transform=='numpy':
-            X = jnp.array(self.X[index])
+            X_trtr = jnp.array(self.X_trtr[index])
             y_trtr = jnp.array(self.y_trtr[index])
+            X_trval = jnp.array(self.X_trval[index])
             y_trval = jnp.array(self.y_trval[index])
 
+        return X_trtr,y_trtr,X_trval,y_trval
 
-        
-        return X,y_trtr,y_trval
+
 
 class CombinedDatasetTRVALMAPS(torch.utils.data.Dataset):
-    def __init__(self,datasets_s,num_samples=256):
+    def __init__(self,datasets,num_samples=256):
         """
         dataset = (n_retinas)(n_samples)(X,y)[data]
         """
         self.num_samples = num_samples
-        self.datasets_s = datasets_s
+        self.datasets = datasets
 
-        self.total_samples = min(len(dataset) for dataset in datasets_s)
+        self.total_samples = min(len(dataset) for dataset in datasets)
         # print(len(self.datasets))
         # print(len(self.datasets[0]))
         # print(len(self.datasets[0][0]))
@@ -299,9 +303,10 @@ class CombinedDatasetTRVALMAPS(torch.utils.data.Dataset):
     
     def __getitem__(self,index):
 
-        combined_X_s=[]
-        combined_y_trtr_s=[]
-        combined_y_trval_s=[]
+        combined_X_trtr=[]
+        combined_y_trtr=[]
+        combined_X_trval=[]
+        combined_y_trval=[]
 
         
         start_idx = index*self.num_samples
@@ -309,23 +314,26 @@ class CombinedDatasetTRVALMAPS(torch.utils.data.Dataset):
         # print(start_idx)
         # print(end_idx)
         
-        for dataset in self.datasets_s:
-            samples_X_s = jnp.stack([dataset[i][0] for i in range(start_idx,end_idx)])
-            samples_y_trtr_s= jnp.stack([dataset[i][1] for i in range(start_idx,end_idx)])
-            samples_y_trval_s= jnp.stack([dataset[i][2] for i in range(start_idx,end_idx)])
+        for dataset in self.datasets:
+            samples_X_trtr = jnp.stack([dataset[i][0] for i in range(start_idx,end_idx)])
+            samples_y_trtr= jnp.stack([dataset[i][1] for i in range(start_idx,end_idx)])
+            samples_X_trval= jnp.stack([dataset[i][2] for i in range(start_idx,end_idx)])
+            samples_y_trval= jnp.stack([dataset[i][3] for i in range(start_idx,end_idx)])
 
             
-            combined_X_s.append(samples_X_s)
-            combined_y_trtr_s.append(samples_y_trtr_s)
-            combined_y_trval_s.append(samples_y_trval_s)
+            combined_X_trtr.append(samples_X_trtr)
+            combined_y_trtr.append(samples_y_trtr)
+            combined_X_trval.append(samples_X_trval)
+            combined_y_trval.append(samples_y_trval)
 
         
-        combined_X_s = jnp.array(combined_X_s)
-        combined_y_trtr_s = jnp.array(combined_y_trtr_s)
-        combined_y_trval_s = jnp.array(combined_y_trval_s)
+        combined_X_trtr = jnp.array(combined_X_trtr)
+        combined_y_trtr = jnp.array(combined_y_trtr)
+        combined_X_trval = jnp.array(combined_X_trval)
+        combined_y_trval = jnp.array(combined_y_trval)
 
 
-        return combined_X_s,combined_y_trtr_s,combined_y_trval_s
+        return combined_X_trtr,combined_y_trtr,combined_X_trval,combined_y_trval
     
 
 # %% Recycle
