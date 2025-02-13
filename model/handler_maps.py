@@ -13,6 +13,7 @@ import jax.numpy as jnp
 import re
 from collections import namedtuple
 from model import utils_si
+from model.data_handler import isintuple
 Exptdata = namedtuple('Exptdata', ['X', 'y'])
 Exptdata_spikes = namedtuple('Exptdata', ['X', 'y','spikes'])
 
@@ -51,7 +52,7 @@ def bytestostring(arr):
     rgb = np.array([a.decode('utf-8') for a in arr])
     return rgb
 
-def arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf_params,info_unitSplit=None):
+def arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf_params,info_unitSplit=None,BUILD_MAPS=False):
     dinf = {}
     dinf['unit_locs'] = parameters['unit_locs']
     dinf['unit_types'] = parameters['unit_types']
@@ -249,7 +250,7 @@ def buildRespMap(X,y,spikes,rf_centers,unit_types):
 
 
 
-def maps_validation_split(data_train,data_val,idx_train,idx_val,unit_locs,unit_types,nsamps_val=5000):
+def maps_validation_split(data_train,data_val,idx_train,idx_val,unit_locs,unit_types,nsamps_val=5000,BUILD_MAPS=True):
     
     """
     data=data_train
@@ -284,9 +285,13 @@ def maps_validation_split(data_train,data_val,idx_train,idx_val,unit_locs,unit_t
     spikes_val = spikes_val[:,idx_val]
     # unit_masks_val = unit_masks[idx_val]
 
-    X_y_train,_,_ = buildRespMap(X_tr,y_units_train,spikes_train,unit_locs_train,unit_types_train)
-    X_y_val,_,_ = buildRespMap(X_val,y_units_val,spikes_val,unit_locs_val,unit_types_val)
-   
+    if BUILD_MAPS==True:
+        X_y_train,_,_ = buildRespMap(X_tr,y_units_train,spikes_train,unit_locs_train,unit_types_train)
+        X_y_val,_,_ = buildRespMap(X_val,y_units_val,spikes_val,unit_locs_val,unit_types_val)
+    else:
+        X_y_train = Exptdata(X_tr,y_units_train)
+        X_y_val = Exptdata(X_val,y_units_val)
+       
     
     return X_y_train,X_y_val
 
@@ -606,8 +611,8 @@ def prepare_metaldataset(data_train,umaskcoords_tr_tr,umaskcoords_tr_val,frac_st
         b = umaskcoords_tr_tr[mask,2:4]
         train_y_val[:,b[:,1],b[:,0],t] = bgr
 
-    data_tr_tr = Exptdata(list(data_train.X[:nsamps_tr]),list(train_y_tr))
-    data_tr_val = Exptdata(list(data_train.X[-nsamps_tr:]),list(train_y_val))
+    data_tr_tr = Exptdata(data_train.X[:nsamps_tr],train_y_tr)
+    data_tr_val = Exptdata(data_train.X[-nsamps_tr:],train_y_val)
 
     return data_tr_tr,data_tr_val
 
@@ -622,12 +627,19 @@ def expand_dataset(data,nsamps_max,temporal_width_prepData):
         a = 1
     expanded_X = data.X
     expanded_y = data.y
-    expanded_spikes = data.spikes
-    for j in range(a):
-        expanded_X = expanded_X+data.X
-        expanded_y = expanded_y+data.y
-        expanded_spikes = expanded_spikes+data.spikes
-    data = Exptdata_spikes(expanded_X,expanded_y,expanded_spikes)
+    if isintuple(data,'spikes'):
+        expanded_spikes = data.spikes
+        for j in range(a):
+            expanded_X = expanded_X+data.X
+            expanded_y = expanded_y+data.y
+            expanded_spikes = expanded_spikes+data.spikes
+        data = Exptdata_spikes(expanded_X,expanded_y,expanded_spikes)
+    else:
+        for j in range(a):
+            expanded_X = expanded_X+data.X
+            expanded_y = expanded_y+data.y
+        data = Exptdata(expanded_X,expanded_y)
+
     
     return data
 

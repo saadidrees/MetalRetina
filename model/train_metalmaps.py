@@ -618,7 +618,7 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
     for epoch in tqdm(range(step_start,nb_epochs)):
         _ = gc.collect()
         loss_batch_train=[]
-        t = time.time()
+        # t = time.time()
         # batch_train = next(iter(dataloader_train)); batch=batch_train; 
         for batch_train in dataloader_train:
             current_lr = lr_schedule(mdl_state.step)               
@@ -630,8 +630,8 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
             else:
                 print('Invalid APPROACH')
                 break
-            elap = time.time()-t
-            print(elap)
+            # elap = time.time()-t
+            # print(elap)
 
             # print(loss)
             loss_batch_train.append(loss)

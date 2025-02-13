@@ -185,7 +185,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         t_frame = parameters['t_frame']     # time in ms of one frame/sample 
         # parameters['unames'] = data_quality['uname_selectedUnits']
 
-        data_train,data_val,dinf = handler_maps.arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf_params=psf_params,info_unitSplit=info_unitSplit)
+        data_train,data_val,dinf = handler_maps.arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf_params=psf_params,info_unitSplit=info_unitSplit,BUILD_MAPS=True)
         dinf['unit_locs_train'] = dinf['unit_locs'][dinf['idx_units_train']]
         dinf['unit_types_train'] = dinf['unit_types'][dinf['idx_units_train']]
         
