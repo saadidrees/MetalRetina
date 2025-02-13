@@ -122,7 +122,7 @@ def clip_grads(grads, clip_value=1.0):
         grads
     )
     return clipped_grads
-MAX_RGCS = 600
+MAX_RGCS = 800
 
 @jax.jit
 def pred_psfavg(y_pred,coords,segment_size,MAX_RGCS=MAX_RGCS):   
@@ -156,7 +156,11 @@ def pred_psfavg(y_pred,coords,segment_size,MAX_RGCS=MAX_RGCS):
 @jax.jit
 def calc_loss(y_pred,y,coords,segment_size,N_tr,mask_tr):
     y_pred_units = pred_psfavg(y_pred,coords,segment_size)
-    y_units = pred_psfavg(y,coords,segment_size)      # This is just going to be the actual value at a single pixel
+    if jnp.ndim(y) == jnp.ndim(y_pred): # That is both are in terms of MAPS
+        y_units = pred_psfavg(y,coords,segment_size)      # This is just going to be the actual value at a single pixel
+    else:
+        y_units=y
+        
     y_pred_units = jnp.where(y_pred_units == 0, 1e-6, y_pred_units)
     # y_units = jnp.where(y_units == 0, 1e-6, y_units)
     # mask = jnp.ones(y_units.shape)
@@ -174,13 +178,17 @@ def task_loss(state,params,batch,coords,N_tr,segment_size,mask_tr):
     coords = coords_tr#[coords_tr[:,1]>0,:]
     state = mdl_state
     params = mdl_state.params
-    N_tr = N_task_tr
-    N_val = N_task_val
+    N_tr = N_tr
+    N_val = N_val
     # N_points=N_points_tr
-    N_units=N_tr
     """
     X,y = batch
+    # if jnp.ndim(y)==2:   # That is the format is units
+    #     rgb = jnp.zeros((X.shape[0],X.shape[2],X.shape[3],2),dtype=X.dtype)
+    
+        
     y_pred,state = state.apply_fn({'params': params},X,training=True,mutable=['intermediates'])
+    
     # intermediates = state['intermediates']
     # dense_activations = intermediates['dense_activations'][0]
     
@@ -199,8 +207,9 @@ def train_step_metal(mdl_state,batch,weights_output,lr,dinf_tr):        # Make u
         task_idx = 1
         conv_kern = conv_kern_all[task_idx]
         conv_bias = conv_bias_all[task_idx]
-        train_x = train_x[task_idx]
+        train_x_tr = train_x_tr[task_idx]
         train_y_tr = train_y_tr[task_idx]
+        train_x_val = train_x_val[task_idx]
         train_y_val = train_y_val[task_idx]
         coords_tr = umaskcoords_trtr[task_idx]
         coords_val = umaskcoords_trval[task_idx]
@@ -590,6 +599,11 @@ def load(mdl,variables,lr):
 # %% Training func
 
 def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_tr,dinf_val,nb_epochs,path_model_save,save=False,lr_schedule=None,step_start=0,APPROACH='metal'):
+    """
+    RESP_FORMAT='MAPS'
+    RESP_FORMAT='UNITS'
+
+    """
     print('Training scheme: %s'%APPROACH)
     save = True
     step_start=0
@@ -618,7 +632,7 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
     for epoch in tqdm(range(step_start,nb_epochs)):
         _ = gc.collect()
         loss_batch_train=[]
-        # t = time.time()
+        t = time.time()
         # batch_train = next(iter(dataloader_train)); batch=batch_train; 
         for batch_train in dataloader_train:
             current_lr = lr_schedule(mdl_state.step)               
@@ -630,8 +644,8 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
             else:
                 print('Invalid APPROACH')
                 break
-            # elap = time.time()-t
-            # print(elap)
+            elap = time.time()-t
+            print(elap)
 
             # print(loss)
             loss_batch_train.append(loss)

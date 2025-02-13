@@ -116,6 +116,9 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         data_train, val and test are named tuples. data_train.X contains the stimulus with dimensions [samples,y pixels, x pixels]
         and data_train.y contains the spikerate normalized by median [samples,numOfCells]
     """
+    BUILD_MAPS = False
+    MAX_RGCS = 800
+
 
     trainingSamps_dur_orig = trainingSamps_dur
     if nb_epochs == 0:  # i.e. if only evaluation has to be run then don't load all training data
@@ -185,7 +188,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         t_frame = parameters['t_frame']     # time in ms of one frame/sample 
         # parameters['unames'] = data_quality['uname_selectedUnits']
 
-        data_train,data_val,dinf = handler_maps.arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf_params=psf_params,info_unitSplit=info_unitSplit,BUILD_MAPS=True)
+        data_train,data_val,dinf = handler_maps.arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf_params=psf_params,info_unitSplit=info_unitSplit,BUILD_MAPS=False)
         dinf['unit_locs_train'] = dinf['unit_locs'][dinf['idx_units_train']]
         dinf['unit_types_train'] = dinf['unit_types'][dinf['idx_units_train']]
         
@@ -193,8 +196,10 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         dinf['unit_types_val'] = dinf['unit_types'][dinf['idx_units_val']]
 
 
-        dinf['umaskcoords_trtr'],dinf['umaskcoords_trval'],dinf['umaskcoords_trtr_remap'],dinf['umaskcoords_trval_remap'] = handler_maps.umask_metal_split(dinf['umaskcoords_train'],FRAC_U_TRTR=FRAC_U_TRTR)
-        data_trtr,data_trval = handler_maps.prepare_metaldataset(data_train, dinf['umaskcoords_trtr'],dinf['umaskcoords_trval'],bgr=0,frac_stim_train=0.5)
+        dinf['umaskcoords_trtr'],dinf['umaskcoords_trval'],dinf['umaskcoords_trtr_remap'],dinf['umaskcoords_trval_remap'] = handler_maps.umask_metal_split(dinf['umaskcoords_train'],
+                                                                                                                                                           FRAC_U_TRTR=FRAC_U_TRTR)
+        
+        data_trtr,data_trval = handler_maps.prepare_metaldataset(data_train,dinf['umaskcoords_trtr'],dinf['umaskcoords_trval'],bgr=0,frac_stim_train=0.5,BUILD_MAPS=False)
 
         del data_train, data_test
         
@@ -219,6 +224,31 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     
     cell_types_unique = np.unique(dinf['umaskcoords_train'][:,1])
     
+    nrgcs_trtr=[];nrgcs_trval=[];nrgcs_val=[];
+    for d in range(len(fname_data_train_val_test_all)):
+        nrgcs_trtr.append(dict_trtr[fname_data_train_val_test_all[d]].y.shape[-1])
+        nrgcs_trval.append(dict_trval[fname_data_train_val_test_all[d]].y.shape[-1])
+        nrgcs_val.append(dict_val[fname_data_train_val_test_all[d]].y.shape[-1])
+
+    
+    # %%
+    if BUILD_MAPS==False:   
+        idx_unitsToTake_all_trtr=[];idx_unitsToTake_all_trval=[];idx_unitsToTake_all_val = [];
+        mask_unitsToTake_all_trtr=[];mask_unitsToTake_all_trval=[];mask_unitsToTake_all_val = [];
+        d=0
+        for d in range(len(fname_data_train_val_test_all)):
+            idx_unitsToTake,mask_unitsToTake = handler_maps.get_expandedRGClist(dict_trtr[fname_data_train_val_test_all[d]],MAX_RGCS)
+            idx_unitsToTake_all_trtr.append(idx_unitsToTake)
+            mask_unitsToTake_all_trtr.append(mask_unitsToTake)
+            
+            idx_unitsToTake,mask_unitsToTake = handler_maps.get_expandedRGClist(dict_trval[fname_data_train_val_test_all[d]],MAX_RGCS)
+            idx_unitsToTake_all_trval.append(idx_unitsToTake)
+            mask_unitsToTake_all_trval.append(mask_unitsToTake)
+
+            idx_unitsToTake,mask_unitsToTake = handler_maps.get_expandedRGClist(dict_val[fname_data_train_val_test_all[d]],MAX_RGCS)
+            idx_unitsToTake_all_val.append(idx_unitsToTake)
+            mask_unitsToTake_all_val.append(mask_unitsToTake)
+
 # %%
 
     # Get unit names
@@ -279,12 +309,18 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         data_val = dict_val[fname_data_train_val_test_all[d]]
         
         if mdl_name in modelNames_2D:
-            # data_train = prepare_data_cnn2d_maps(data_train,temporal_width_prepData,MAKE_LISTS=True)     # [samples,temporal_width,rows,columns]
-            data_trtr = prepare_data_cnn2d_maps(data_trtr,temporal_width_prepData,MAKE_LISTS=True)     # [samples,temporal_width,rows,columns]
-            data_trval = prepare_data_cnn2d_maps(data_trval,temporal_width_prepData,MAKE_LISTS=True)     # [samples,temporal_width,rows,columns]
+            if BUILD_MAPS==True:
+                idx_unitsToTake_trtr = []
+                idx_unitsToTake_trval = []
+                idx_unitsToTake_val = []
+            else:
+                idx_unitsToTake_trtr = idx_unitsToTake_all_trtr[d]
+                idx_unitsToTake_trval = idx_unitsToTake_all_trval[d]
+                idx_unitsToTake_val = idx_unitsToTake_all_val[d]
 
-            # data_test = prepare_data_cnn2d_maps(data_test,temporal_width_prepData)
-            data_val = prepare_data_cnn2d_maps(data_val,temporal_width_prepData,MAKE_LISTS=True)   
+            data_trtr = prepare_data_cnn2d_maps(data_trtr,temporal_width_prepData,MAKE_LISTS=True,idx_unitsToTake=idx_unitsToTake_trtr)     # [samples,temporal_width,rows,columns]
+            data_trval = prepare_data_cnn2d_maps(data_trval,temporal_width_prepData,MAKE_LISTS=True,idx_unitsToTake=idx_unitsToTake_trval)     # [samples,temporal_width,rows,columns]
+            data_val = prepare_data_cnn2d_maps(data_val,temporal_width_prepData,MAKE_LISTS=True,idx_unitsToTake=idx_unitsToTake_val)   
             
             # If a dataset is shorter than the max one, then just repeat it so we can still vectorize everything
             if len(data_trtr.X)<(nsamps_max-temporal_width_prepData):
@@ -328,7 +364,6 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     """
 
    # ----  Dataloaders  
-    MAX_RGCS = 600
     assert MAX_RGCS > c_exp_tr.sum(axis=1).max(), 'MAX_RGCS limit lower than maximum RGCs in a dataset'
     # MAX_RGCS=int(c_tr.sum())
 
@@ -359,6 +394,8 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     dataloader_val = DataLoader(combined_dataset,batch_size=1,collate_fn=dataloaders.jnp_collate_MAML,shuffle=False)
     batch = next(iter(dataloader_val));a,b=batch
 
+
+    # %%
     maxLen_umaskcoords_tr_subtr = max([len(value['umaskcoords_trtr_remap']) for value in dict_dinf.values()])
     maxLen_umaskcoords_tr_subval = max([len(value['umaskcoords_trval_remap']) for value in dict_dinf.values()])
     maxLen_umaskcoords_val = max([len(value['umaskcoords_val']) for value in dict_dinf.values()])
@@ -381,7 +418,6 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     maskunits_trval = np.zeros((n_tasks,MAX_RGCS),dtype='int')
     maskunits_val = np.zeros((n_tasks,MAX_RGCS),dtype='int')
 
-    
     d=0
     for d in range(len(fname_data_train_val_test_all)):
         rgb = dict_dinf[fname_data_train_val_test_all[d]]['umaskcoords_trtr_remap']

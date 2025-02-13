@@ -78,7 +78,7 @@ def arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf
 
         
         data_train,data_val = maps_validation_split(data_train,data_val,info_unitSplit['idx_train'],
-                                                                   info_unitSplit['idx_val'],parameters['unit_locs'],parameters['unit_types'])
+                                                                   info_unitSplit['idx_val'],parameters['unit_locs'],parameters['unit_types'],BUILD_MAPS=BUILD_MAPS)
         
         idx_units_train = info_unitSplit['idx_train']
         idx_units_val = info_unitSplit['idx_val']
@@ -96,12 +96,12 @@ def arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf
     data_train,dinf['umasks_train'],dinf['umaskcoords_train'],dinf['maskunitloc_train'],dinf['segment_size'] = unit_psf(data_train,
                                                                                                                 dinf['unit_locs'][idx_units_train],
                                                                                                                 dinf['unit_types'][idx_units_train],
-                                                                                                                psf_params)
+                                                                                                                psf_params,BUILD_MAPS=BUILD_MAPS)
   
     data_val,dinf['umasks_val'],dinf['umaskcoords_val'],dinf['maskunitloc_val'],_ = unit_psf(data_val,
                                                                                     dinf['unit_locs'][idx_units_val],
                                                                                     dinf['unit_types'][idx_units_val],
-                                                                                    psf_params)
+                                                                                    psf_params,BUILD_MAPS=BUILD_MAPS)
     
     intersection = check_psf_overlap(dinf['umaskcoords_train'],dinf['umaskcoords_val'])
     for t in range(len(intersection)):
@@ -110,7 +110,7 @@ def arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf
     all_empty = np.all([arr.size == 0 for arr in intersection])
     if all_empty==False:
         data_train,dinf['umasks_train'],dinf['umaskcoords_train'] = remove_overlaps_across(data_train,dinf['umaskcoords_train'],dinf['umasks_train'],
-                                                                                                          dinf['unit_types'][idx_units_train],intersection)
+                                                                                                          dinf['unit_types'][idx_units_train],intersection,BUILD_MAPS=BUILD_MAPS)
     assert len(dinf['umaskcoords_train'])/dinf['segment_size'] ==  dinf['N_units_train']
     assert len(dinf['umaskcoords_val'])/dinf['segment_size'] ==  dinf['N_units_val']
 
@@ -289,14 +289,14 @@ def maps_validation_split(data_train,data_val,idx_train,idx_val,unit_locs,unit_t
         X_y_train,_,_ = buildRespMap(X_tr,y_units_train,spikes_train,unit_locs_train,unit_types_train)
         X_y_val,_,_ = buildRespMap(X_val,y_units_val,spikes_val,unit_locs_val,unit_types_val)
     else:
-        X_y_train = Exptdata(X_tr,y_units_train)
-        X_y_val = Exptdata(X_val,y_units_val)
+        X_y_train = Exptdata_spikes(X_tr,y_units_train,spikes_train)
+        X_y_val = Exptdata_spikes(X_val,y_units_val,spikes_val)
        
     
     return X_y_train,X_y_val
 
 
-def unit_psf(data,unit_locs,unit_types,psf_params):
+def unit_psf(data,unit_locs,unit_types,psf_params,BUILD_MAPS=True):
     """
     data = data_train
     unit_locs=dinf['unit_locs'][idx_units_train]
@@ -305,16 +305,18 @@ def unit_psf(data,unit_locs,unit_types,psf_params):
     method = psf_params['method']
     """
     
-    X = data.X
+    # X = data.X
     y = data.y
     spikes = data.spikes
     pixel_neigh=psf_params['pixel_neigh']
     method = psf_params['method']
 
+    frame_shape = [data.X.shape[1],data.X.shape[2]]
+
     
     # Fix for boundary cells
-    unit_locs[unit_locs[:,0]>=X.shape[2],0] = X.shape[2]-1
-    unit_locs[unit_locs[:,1]>=X.shape[1],1] = X.shape[1]-1
+    # unit_locs[unit_locs[:,0]>=X.shape[2],0] = X.shape[2]-1
+    # unit_locs[unit_locs[:,1]>=X.shape[1],1] = X.shape[1]-1
     # unit_locs[unit_locs<0]=0
     
     u=0
@@ -323,12 +325,11 @@ def unit_psf(data,unit_locs,unit_types,psf_params):
     unit_masks_coords = np.zeros((0,4),dtype='int')
     for u in range(len(unit_types)):
         u_type_idx = unit_types[u]-1
-        rgb = y[:,unit_locs[u,1],unit_locs[u,0],u_type_idx]
-        loc_mask = np.zeros((y.shape[1],y.shape[2]),dtype=bool)
+        loc_mask = np.zeros((frame_shape[0],frame_shape[1]),dtype=bool)
 
         if method=='square':
-            if np.all(unit_locs[u]-pixel_neigh)>0 and np.all((unit_locs[u]+pixel_neigh+1)<[X.shape[2],X.shape[1]]):
-                loc_mask[unit_locs[u,1]-pixel_neigh:unit_locs[u,1]+pixel_neigh+1,unit_locs[u,0]-pixel_neigh:unit_locs[u,0]+pixel_neigh+1] = True
+            # if np.all(unit_locs[u]-pixel_neigh)>0 and np.all((unit_locs[u]+pixel_neigh+1)<[X.shape[2],X.shape[1]]):
+            loc_mask[unit_locs[u,1]-pixel_neigh:unit_locs[u,1]+pixel_neigh+1,unit_locs[u,0]-pixel_neigh:unit_locs[u,0]+pixel_neigh+1] = True
             segment_size = int((pixel_neigh+1+pixel_neigh)*(pixel_neigh+1+pixel_neigh))
             
         elif method=='cross':
@@ -338,7 +339,10 @@ def unit_psf(data,unit_locs,unit_types,psf_params):
             segment_size = int((4*pixel_neigh)+1)
 
         test.append(loc_mask.sum())
-        y[:,loc_mask,u_type_idx] = rgb[:,None]
+        
+        if BUILD_MAPS==True:
+            rgb = y[:,unit_locs[u,1],unit_locs[u,0],u_type_idx]
+            y[:,loc_mask,u_type_idx] = rgb[:,None]
         
         
         a = np.where(loc_mask)
@@ -352,10 +356,9 @@ def unit_psf(data,unit_locs,unit_types,psf_params):
     unit_masks = np.asarray(unit_masks)
    
     cell_types_unique = np.unique(unit_types)
-    frame_shape = [X.shape[1],X.shape[2]]
     mask_unitloc = get_maskunitloc(unit_locs,unit_types,cell_types_unique,frame_shape)
     
-    data = Exptdata_spikes(X,y,spikes)
+    data = Exptdata_spikes(data.X,y,spikes)
     
     return data,unit_masks,unit_masks_coords,mask_unitloc,segment_size
 
@@ -418,7 +421,7 @@ def remove_overlaps_across(data,umaskcoords_train,umasks_train,cell_types,inters
     return data_train_new,umasks_new,umaskcoords_train_new
 """
 
-def remove_overlaps_across(data,umaskcoords_train,umasks_train,cell_types,intersection):
+def remove_overlaps_across(data,umaskcoords_train,umasks_train,cell_types,intersection,BUILD_MAPS=True):
     """
     data=data_train
     umaskcoords_train = dinf['umaskcoords_train']
@@ -436,7 +439,8 @@ def remove_overlaps_across(data,umaskcoords_train,umasks_train,cell_types,inters
     for t in range(len(intersection)):
         coords_t = intersection[t]
         if len(coords_t)>0:
-            y_tr[:,coords_t[:,1],coords_t[:,0],t] = 0
+            if BUILD_MAPS==True:
+                y_tr[:,coords_t[:,1],coords_t[:,0],t] = 0
             a = umaskcoords_train[:,2:4]
             idx_remove = np.nonzero((a[:, None] == coords_t).all(axis=2))[0]
             idx_coords_remove = np.concatenate((idx_coords_remove,idx_remove),axis=0)
@@ -580,15 +584,18 @@ def umask_metal_split(umaskcoords,FRAC_U_TRTR=0.95):
     return umaskcoords_tr_subtr,umaskcoords_tr_subval,umaskcoords_tr_subtr_remap,umaskcoords_tr_subval_remap
 
 
-def prepare_metaldataset(data_train,umaskcoords_tr_tr,umaskcoords_tr_val,frac_stim_train=0.5,bgr=0):
+def prepare_metaldataset(data_train,umaskcoords_tr_tr,umaskcoords_tr_val,frac_stim_train=0.5,bgr=0,BUILD_MAPS=True):
     """
+    1. Set to 0 the units in training set we want to use for validation gradients during metal and vice versa
+    2. Select first half of stimuli to train and second half for validation gradients
+    
     X = data_train.X
     y = data_train.y
     umaskcoords_tr_tr = dinf['umaskcoords_trtr']
     umaskcoords_tr_val = dinf['umaskcoords_trval']
 
     """
-    bgr = 0
+    # bgr = 0
     cell_types_unique = np.unique(umaskcoords_tr_tr[:,1])
     
     
@@ -598,18 +605,28 @@ def prepare_metaldataset(data_train,umaskcoords_tr_tr,umaskcoords_tr_val,frac_st
 
     assert train_y_tr.shape[0] == train_y_val.shape[0],'trtr and trval lengths not the same'
 
-    t=0
-    for t in range(len(cell_types_unique)):
+    if BUILD_MAPS==True:
+        t=0
+        for t in range(len(cell_types_unique)):
+            
+            # Set validation units to 0 in training set
+            mask = umaskcoords_tr_val[:, 1] == cell_types_unique[t]
+            b = umaskcoords_tr_val[mask,2:4]
+            train_y_tr[:,b[:,1],b[:,0],t] = bgr
+    
+            # Set training units to 0 in validaion set
+            mask = umaskcoords_tr_tr[:, 1] == cell_types_unique[t]
+            b = umaskcoords_tr_tr[mask,2:4]
+            train_y_val[:,b[:,1],b[:,0],t] = bgr
+            
+    else:
+        idx_trtr = np.unique(umaskcoords_tr_tr[:,0])
+        train_y_tr=train_y_tr[:,idx_trtr]
         
-        # Set validation units to 0 in training set
-        mask = umaskcoords_tr_val[:, 1] == cell_types_unique[t]
-        b = umaskcoords_tr_val[mask,2:4]
-        train_y_tr[:,b[:,1],b[:,0],t] = bgr
+        idx_trval = np.unique(umaskcoords_tr_val[:,0])
+        train_y_val=train_y_val[:,idx_trval]
 
-        # Set training units to 0 in validaion set
-        mask = umaskcoords_tr_tr[:, 1] == cell_types_unique[t]
-        b = umaskcoords_tr_tr[mask,2:4]
-        train_y_val[:,b[:,1],b[:,0],t] = bgr
+
 
     data_tr_tr = Exptdata(data_train.X[:nsamps_tr],train_y_tr)
     data_tr_val = Exptdata(data_train.X[-nsamps_tr:],train_y_val)
@@ -643,6 +660,17 @@ def expand_dataset(data,nsamps_max,temporal_width_prepData):
     
     return data
 
+def get_expandedRGClist(data,MAX_RGCS):
+    
+    rgb = np.arange(data.y.shape[-1])
+    num_rgcs_curr = rgb.shape[0]
+    if num_rgcs_curr<MAX_RGCS:
+        rgb = np.concatenate((rgb,np.tile(rgb[-1],MAX_RGCS-num_rgcs_curr)))
+    idx_unitsToTake = rgb[:MAX_RGCS]
+    mask_unitsToTake = np.ones_like(idx_unitsToTake)
+    mask_unitsToTake[num_rgcs_curr:] = 0
+
+    return idx_unitsToTake,mask_unitsToTake
 
 # %%
 """
