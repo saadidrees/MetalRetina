@@ -707,12 +707,15 @@ def prepare_data_cnn2d(data,filt_temporal_width,idx_unitsToTake,num_chunks=1,MAK
     del X, y
     return data
 
-def prepare_data_cnn2d_maps(data,filt_temporal_width,num_chunks=1,MAKE_LISTS=False):  # resp_format = INDIVIDUAL, MAP
+def prepare_data_cnn2d_maps(data,filt_temporal_width,num_chunks=1,MAKE_LISTS=False,idx_unitsToTake=[]):  # resp_format = INDIVIDUAL, MAP
 
     if filt_temporal_width>0:
         X = rolling_window(data.X,filt_temporal_width,time_axis=0)
         y = data.y
-        y = y[filt_temporal_width:]
+        if len(idx_unitsToTake)==0:       # if data is in map format
+            y = y[filt_temporal_width:]
+        else:
+            y = y[filt_temporal_width:][:,idx_unitsToTake]         # if data is in units format then repeat the last unit for vectorizatrion
         if isintuple(data,'spikes')==True:
             spikes = data.spikes[filt_temporal_width:]
             
@@ -721,7 +724,10 @@ def prepare_data_cnn2d_maps(data,filt_temporal_width,num_chunks=1,MAKE_LISTS=Fal
 
     else:
         X = np.expand_dims(data.X,axis=1)
-        y = data.y
+        if len(idx_unitsToTake)==0:
+            y = data.y
+        else:
+            y = data.y[:,idx_unitsToTake]
 
     if X.ndim==5:       # if the data has multiple stims
         X_rgb = np.moveaxis(X,0,-1)
