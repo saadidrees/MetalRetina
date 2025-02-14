@@ -473,7 +473,7 @@ def eval_step(state,batch_val,dinf_batch_val,n_batches=1e5):
     
     else:       # if the data is in dataloader format
         batch = next(iter(batch_val))
-        y_shape = batch[1].shape[1:]
+        y_shape = (*batch[0].shape[-2:],2)
         y_pred_units = jnp.empty((0,N_val))
         y_units = jnp.empty((0,N_val))
         y_pred = jnp.empty((0,*y_shape))
@@ -481,6 +481,7 @@ def eval_step(state,batch_val,dinf_batch_val,n_batches=1e5):
 
         loss = []
         count_batch = 0
+        # batch = next(iter(batch_val))
         for batch in batch_val:
             if count_batch<n_batches:
                 X_batch,y_batch = batch
@@ -491,6 +492,8 @@ def eval_step(state,batch_val,dinf_batch_val,n_batches=1e5):
                 
                 loss.append(loss_batch)
                 y_pred = jnp.concatenate((y_pred,y_pred_batch),axis=0)
+                if jnp.ndim(y_batch) != jnp.ndim(y_pred_batch):     # MEaning that resp format is individual units
+                    y_batch = generate_activity_map(coords,y_batch,N_val)
                 y = jnp.concatenate((y,y_batch),axis=0)
                 y_pred_units = jnp.concatenate((y_pred_units,y_pred_units_b),axis=0)
                 y_units = jnp.concatenate((y_units,y_units_b),axis=0)
@@ -501,6 +504,25 @@ def eval_step(state,batch_val,dinf_batch_val,n_batches=1e5):
     return loss,y_pred,y,y_pred_units,y_units
 
 
+def generate_activity_map(cells, activity, N_val,grid_size=(40, 80)):
+    """
+    activity = y_batch
+    cells = coords
+    """
+    T, C = activity[:,:N_val].shape
+    N = cells.shape[0]
+    
+    # Initialize map
+    activity_map = np.zeros((T, grid_size[0], grid_size[1], 2))  # T x 40 x 80 x 2
+    
+    for i in range(N):
+        cell_id = int(cells[i, 0])  # Cell ID (indexing activity)
+        cell_type = int(cells[i, 1])-1  # 0 or 1
+        x, y = int(cells[i, 2]), int(cells[i, 3])  # Spatial position
+
+        activity_map[:, y, x, cell_type] = activity[:, cell_id]  # Assign activity
+
+    return activity_map
 
 def activity_regularizer(activations,alpha=1e-4):
     l1_penalty = alpha*jnp.mean(jnp.abs(activations))

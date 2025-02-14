@@ -188,7 +188,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         t_frame = parameters['t_frame']     # time in ms of one frame/sample 
         # parameters['unames'] = data_quality['uname_selectedUnits']
 
-        data_train,data_val,dinf = handler_maps.arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf_params=psf_params,info_unitSplit=info_unitSplit,BUILD_MAPS=False)
+        data_train,data_val,dinf = handler_maps.arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf_params=psf_params,info_unitSplit=info_unitSplit,BUILD_MAPS=BUILD_MAPS)
         dinf['unit_locs_train'] = dinf['unit_locs'][dinf['idx_units_train']]
         dinf['unit_types_train'] = dinf['unit_types'][dinf['idx_units_train']]
         
@@ -199,7 +199,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         dinf['umaskcoords_trtr'],dinf['umaskcoords_trval'],dinf['umaskcoords_trtr_remap'],dinf['umaskcoords_trval_remap'] = handler_maps.umask_metal_split(dinf['umaskcoords_train'],
                                                                                                                                                            FRAC_U_TRTR=FRAC_U_TRTR)
         
-        data_trtr,data_trval = handler_maps.prepare_metaldataset(data_train,dinf['umaskcoords_trtr'],dinf['umaskcoords_trval'],bgr=0,frac_stim_train=0.5,BUILD_MAPS=False)
+        data_trtr,data_trval = handler_maps.prepare_metaldataset(data_train,dinf['umaskcoords_trtr'],dinf['umaskcoords_trval'],bgr=0,frac_stim_train=0.5,BUILD_MAPS=BUILD_MAPS)
 
         del data_train, data_test
         
@@ -781,17 +781,17 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
                 val_loss_allEpochs[i] = val_loss
                 
         
-                fev, fracExVar, predCorr, rrCorr = model_evaluate_new(y_units,pred_rate_units,temporal_width_eval,lag=int(samps_shift),obs_noise=obs_noise)
+                fev, fracExVar, predCorr, rrCorr = model_evaluate_new(y_units,pred_rate_units,temporal_width_eval,lag=int(samps_shift),obs_noise=0)
                         
                 fev_allUnits_allEpochs[i,:] = fev
                 fev_medianUnits_allEpochs[i] = np.nanmedian(fev)      
-                fracExVar_allUnits_allEpochs[i,:] = fracExVar
-                fracExVar_medianUnits_allEpochs[i] = np.nanmedian(fracExVar)
+                # fracExVar_allUnits_allEpochs[i,:] = fracExVar
+                # fracExVar_medianUnits_allEpochs[i] = np.nanmedian(fracExVar)
                 
                 predCorr_allUnits_allEpochs[i,:] = predCorr
                 predCorr_medianUnits_allEpochs[i] = np.nanmedian(predCorr)
-                rrCorr_allUnits_allEpochs[i,:] = rrCorr
-                rrCorr_medianUnits_allEpochs[i] = np.nanmedian(rrCorr)
+                # rrCorr_allUnits_allEpochs[i,:] = rrCorr
+                # rrCorr_medianUnits_allEpochs[i] = np.nanmedian(rrCorr)
                 
                 _ = gc.collect()
         
