@@ -346,7 +346,9 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         dict_val[fname_data_train_val_test_all[d]] = data_val
    
     # Shuffle just the training dataset
-    # dict_train = dataloaders.shuffle_dataset(dict_train)    
+    dict_trtr = dataloaders.shuffle_dataset(dict_trtr)    
+    dict_trval = dataloaders.shuffle_dataset(dict_trval)    
+
     
     # data_train = dataset_shuffle(data_train,n_train)
 
@@ -749,7 +751,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
     
         RetinaDataset_val = dataloaders.RetinaDataset(data_val.X,data_val.y,transform=None)
-        dataloader_val = DataLoader(RetinaDataset_val,batch_size=bz,collate_fn=dataloaders.jnp_collate)
+        dataloader_val = DataLoader(RetinaDataset_val,batch_size=512,collate_fn=dataloaders.jnp_collate)
     
         # mdl_state,mdl,config = model.jax.train_singleretunits.initialize_model(mdl,dict_params,inp_shape,lr,save_model=False)
     
