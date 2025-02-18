@@ -385,7 +385,8 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         Retinadatasets_val.append(rgb)
     
        
-       
+    if APPROACH=='maml1step':
+        bz_ms = int(bz_ms/2)        # Because we combine training and validation batches at training phase then
     batch_size_train = bz_ms
     combined_dataset = dataloaders.CombinedDatasetTRVALMAPS(Retinadatasets_train,num_samples=batch_size_train)
     dataloader_train = DataLoader(combined_dataset,batch_size=1,collate_fn=dataloaders.jnp_collate_MAML,shuffle=False)
