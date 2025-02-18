@@ -276,9 +276,35 @@ def train_step_metal(mdl_state,batch,weights_output,lr,dinf_tr):        # Make u
         
         return local_loss_val,y_pred_val,local_mdl_state,local_grads_total,conv_kern,conv_bias
     
+    def batched_metal_grads(mdl_state, global_params,MAX_RGCS,cell_types_unique,segment_size, *inputs, NUM_SPLITS=0):
+        """
+        inputs = (train_x_tr, train_y_tr, train_x_val, train_y_val,
+        umaskcoords_trtr, umaskcoords_trval, N_trtr, N_trval, mask_trtr, mask_trval, conv_kern_all, conv_bias_all)
+        """
+        # Manually split data into `num_splits` roughly equal groups
+        split_sizes = np.array_split(np.arange(len(inputs[0])), NUM_SPLITS)  # Index-based split
+        results = []
+        grads_append=[]
+    
+        for idxs in split_sizes:
+            batch = [jnp.array(inp[idxs]) for inp in inputs]  # Extract sub-batch
+            batch = tuple(jnp.atleast_1d(b) for b in batch)   # Ensure at least 1D
+            local_losses,local_y_preds,local_mdl_states,local_grads_all,local_kerns,local_biases = jax.vmap(partial(metal_grads, mdl_state, global_params,MAX_RGCS,cell_types_unique,segment_size))(*batch)
+            result = (local_losses,local_y_preds,local_kerns,local_biases)
+            grads_append.append(local_grads_all)
+            results.append(result)
+        # THE ISSUE IS WITH LOCAL_GRADS_ALL AS ITS A DICT. SO I JUST NEED TO DEAL WITH THIS SEPERATELY IN THE FOLLOWING LINE
+        # Concatenate results along batch axis
+        grads_cat = jax.tree_map(lambda *x: jnp.concatenate(x, axis=0), *grads_append)
+        results_cat = tuple(jnp.concatenate(r, axis=0) for r in zip(*results))
+
+        return results_cat,grads_cat
+
     """
     batch_train = next(iter(dataloader_train)); batch=batch_train; 
     """
+    NUM_SPLITS = 0  # Try different values like 3 if needed
+
     global_params = mdl_state.params
     
     train_x_tr,train_y_tr,train_x_val,train_y_val = batch
@@ -294,13 +320,22 @@ def train_step_metal(mdl_state,batch,weights_output,lr,dinf_tr):        # Make u
     cell_types_unique = dinf_tr['cell_types_unique']
     segment_size = dinf_tr['segment_size']
 
-    # maxRGCs = mask_unitsToTake_all.shape[-1] #jnp.sum(mask_unitsToTake_all)
-    local_losses,local_y_preds,local_mdl_states,local_grads_all,local_kerns,local_biases = jax.vmap(Partial(metal_grads,\
-                                                                                                              mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size))\
-                                                                                                              (train_x_tr,train_y_tr,train_x_val,train_y_val,
-                                                                                                               umaskcoords_trtr,umaskcoords_trval,N_trtr,N_trval,mask_trtr,mask_trval,
-                                                                                                               conv_kern_all,conv_bias_all)
-                  
+
+    if NUM_SPLITS==0:       # That is don't split the vmap batches. Run all retinas in parallel
+        local_losses,local_y_preds,local_mdl_states,local_grads_all,local_kerns,local_biases = jax.vmap(Partial(metal_grads,\
+                                                                                                                  mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size))\
+                                                                                                                  (train_x_tr,train_y_tr,train_x_val,train_y_val,
+                                                                                                                   umaskcoords_trtr,umaskcoords_trval,N_trtr,N_trval,mask_trtr,mask_trval,
+                                                                                                                   conv_kern_all,conv_bias_all)
+    
+                    
+    else:       # Otherwise split the vmap. This avoids running out of GPU memory when we have many retinas and large batch size
+        (local_losses, local_y_preds, local_kerns, local_biases),local_grads_all = batched_metal_grads(
+        mdl_state, global_params,MAX_RGCS,cell_types_unique,segment_size, train_x_tr, train_y_tr, train_x_val, train_y_val,
+        umaskcoords_trtr, umaskcoords_trval, N_trtr, N_trval, mask_trtr, mask_trval, conv_kern_all, conv_bias_all, 
+        NUM_SPLITS=NUM_SPLITS)
+                
+                                        
     local_losses_summed = jnp.sum(local_losses)
     local_grads_summed = jax.tree_map(lambda g: jnp.sum(g,axis=0), local_grads_all)
     
@@ -493,7 +528,7 @@ def eval_step(state,batch_val,dinf_batch_val,n_batches=1e5):
                 loss.append(loss_batch)
                 y_pred = jnp.concatenate((y_pred,y_pred_batch),axis=0)
                 if jnp.ndim(y_batch) != jnp.ndim(y_pred_batch):     # MEaning that resp format is individual units
-                    y_batch = generate_activity_map(coords,y_batch,N_val)
+                    y_batch = generate_activity_map(coords,y_batch,N_val,frame_size=y_pred_batch.shape[1:3])
                 y = jnp.concatenate((y,y_batch),axis=0)
                 y_pred_units = jnp.concatenate((y_pred_units,y_pred_units_b),axis=0)
                 y_units = jnp.concatenate((y_units,y_units_b),axis=0)
@@ -501,10 +536,11 @@ def eval_step(state,batch_val,dinf_batch_val,n_batches=1e5):
                 count_batch+=1
             else:
                 break
+            
     return loss,y_pred,y,y_pred_units,y_units
 
 
-def generate_activity_map(cells, activity, N_val,grid_size=(40, 80)):
+def generate_activity_map(cells,activity,N_val,frame_size=(40, 80)):
     """
     activity = y_batch
     cells = coords
@@ -512,15 +548,14 @@ def generate_activity_map(cells, activity, N_val,grid_size=(40, 80)):
     T, C = activity[:,:N_val].shape
     N = cells.shape[0]
     
-    # Initialize map
-    activity_map = np.zeros((T, grid_size[0], grid_size[1], 2))  # T x 40 x 80 x 2
+    activity_map = np.zeros((T, frame_size[0], frame_size[1], 2))
     
     for i in range(N):
-        cell_id = int(cells[i, 0])  # Cell ID (indexing activity)
-        cell_type = int(cells[i, 1])-1  # 0 or 1
-        x, y = int(cells[i, 2]), int(cells[i, 3])  # Spatial position
+        cell_id = int(cells[i, 0])
+        cell_type = int(cells[i, 1])-1
+        x, y = int(cells[i, 2]), int(cells[i, 3])
 
-        activity_map[:, y, x, cell_type] = activity[:, cell_id]  # Assign activity
+        activity_map[:,y,x,cell_type] = activity[:,cell_id] 
 
     return activity_map
 
