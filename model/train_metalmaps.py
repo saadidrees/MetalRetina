@@ -276,29 +276,6 @@ def train_step_metal(mdl_state,batch,weights_output,lr,dinf_tr):        # Make u
         
         return local_loss_val,y_pred_val,local_mdl_state,local_grads_total,conv_kern,conv_bias
     
-    def batched_metal_grads(mdl_state, global_params,MAX_RGCS,cell_types_unique,segment_size, *inputs, NUM_SPLITS=0):
-        """
-        inputs = (train_x_tr, train_y_tr, train_x_val, train_y_val,
-        umaskcoords_trtr, umaskcoords_trval, N_trtr, N_trval, mask_trtr, mask_trval, conv_kern_all, conv_bias_all)
-        """
-        # Manually split data into `num_splits` roughly equal groups
-        split_sizes = np.array_split(np.arange(len(inputs[0])), NUM_SPLITS)  # Index-based split
-        results = []
-        grads_append=[]
-    
-        for idxs in split_sizes:
-            batch = [jnp.array(inp[idxs]) for inp in inputs]  # Extract sub-batch
-            batch = tuple(jnp.atleast_1d(b) for b in batch)   # Ensure at least 1D
-            local_losses,local_y_preds,local_mdl_states,local_grads_all,local_kerns,local_biases = jax.vmap(partial(metal_grads, mdl_state, global_params,MAX_RGCS,cell_types_unique,segment_size))(*batch)
-            result = (local_losses,local_y_preds,local_kerns,local_biases)
-            grads_append.append(local_grads_all)
-            results.append(result)
-        # THE ISSUE IS WITH LOCAL_GRADS_ALL AS ITS A DICT. SO I JUST NEED TO DEAL WITH THIS SEPERATELY IN THE FOLLOWING LINE
-        # Concatenate results along batch axis
-        grads_cat = jax.tree_map(lambda *x: jnp.concatenate(x, axis=0), *grads_append)
-        results_cat = tuple(jnp.concatenate(r, axis=0) for r in zip(*results))
-
-        return results_cat,grads_cat
 
     """
     batch_train = next(iter(dataloader_train)); batch=batch_train; 
@@ -330,7 +307,7 @@ def train_step_metal(mdl_state,batch,weights_output,lr,dinf_tr):        # Make u
     
                     
     else:       # Otherwise split the vmap. This avoids running out of GPU memory when we have many retinas and large batch size
-        (local_losses, local_y_preds, local_kerns, local_biases),local_grads_all = batched_metal_grads(
+        (local_losses, local_y_preds, local_kerns, local_biases),local_grads_all = batched_metal_grads(metal_grads,
         mdl_state, global_params,MAX_RGCS,cell_types_unique,segment_size, train_x_tr, train_y_tr, train_x_val, train_y_val,
         umaskcoords_trtr, umaskcoords_trval, N_trtr, N_trval, mask_trtr, mask_trval, conv_kern_all, conv_bias_all, 
         NUM_SPLITS=NUM_SPLITS)
@@ -435,6 +412,7 @@ def train_step_maml(mdl_state,batch,weights_output,lr,dinf_tr):        # Make un
     """
     batch_train = next(iter(dataloader_train)); batch=batch_train; 
     """
+    NUM_SPLITS=0
     global_params = mdl_state.params
     
     train_x_tr,train_y_tr,train_x_val,train_y_val = batch
@@ -450,12 +428,21 @@ def train_step_maml(mdl_state,batch,weights_output,lr,dinf_tr):        # Make un
     cell_types_unique = dinf_tr['cell_types_unique']
     segment_size = dinf_tr['segment_size']
 
-    # maxRGCs = mask_unitsToTake_all.shape[-1] #jnp.sum(mask_unitsToTake_all)
-    local_losses,local_y_preds,local_mdl_states,local_grads_all,local_kerns,local_biases = jax.vmap(Partial(maml_grads,\
-                                                                                                              mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size))\
-                                                                                                              (train_x_tr,train_y_tr,train_x_val,train_y_val,
-                                                                                                               umaskcoords_trtr,umaskcoords_trval,N_trtr,N_trval,mask_trtr,mask_trval,
-                                                                                                               conv_kern_all,conv_bias_all)
+
+    if NUM_SPLITS==0:
+        local_losses,local_y_preds,local_mdl_states,local_grads_all,local_kerns,local_biases = jax.vmap(Partial(maml_grads,\
+                                                                                                                  mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size))\
+                                                                                                                  (train_x_tr,train_y_tr,train_x_val,train_y_val,
+                                                                                                                   umaskcoords_trtr,umaskcoords_trval,N_trtr,N_trval,mask_trtr,mask_trval,
+                                                                                                                   conv_kern_all,conv_bias_all)
+                                                                                                              
+    else:       # Otherwise split the vmap. This avoids running out of GPU memory when we have many retinas and large batch size
+        (local_losses, local_y_preds, local_kerns, local_biases),local_grads_all = batched_metal_grads(maml_grads,
+        mdl_state, global_params,MAX_RGCS,cell_types_unique,segment_size, train_x_tr, train_y_tr, train_x_val, train_y_val,
+        umaskcoords_trtr, umaskcoords_trval, N_trtr, N_trval, mask_trtr, mask_trval, conv_kern_all, conv_bias_all, 
+        NUM_SPLITS=NUM_SPLITS)
+                                                                                                          
+                                                                                                              
                   
     local_losses_summed = jnp.sum(local_losses)
     local_grads_summed = jax.tree_map(lambda g: jnp.sum(g,axis=0), local_grads_all)
@@ -652,6 +639,32 @@ def load(mdl,variables,lr):
     optimizer = optax.adam(learning_rate = lr)
     mdl_state = TrainState.create(apply_fn=mdl.apply,params=variables['params'],tx=optimizer)
     return mdl_state
+
+
+def batched_metal_grads(fn,mdl_state, global_params,MAX_RGCS,cell_types_unique,segment_size, *inputs, NUM_SPLITS=2):
+    """
+    fn = metal_grads
+    inputs = (train_x_tr, train_y_tr, train_x_val, train_y_val,
+    umaskcoords_trtr, umaskcoords_trval, N_trtr, N_trval, mask_trtr, mask_trval, conv_kern_all, conv_bias_all)
+    """
+    # Manually split data into `num_splits` roughly equal groups
+    split_sizes = np.array_split(np.arange(len(inputs[0])), NUM_SPLITS)  # Index-based split
+    results = []
+    grads_append=[]
+
+    for idxs in split_sizes:
+        batch = [jnp.array(inp[idxs]) for inp in inputs]  # Extract sub-batch
+        batch = tuple(jnp.atleast_1d(b) for b in batch)   # Ensure at least 1D
+        local_losses,local_y_preds,local_mdl_states,local_grads_all,local_kerns,local_biases = jax.vmap(partial(fn, mdl_state, global_params,MAX_RGCS,cell_types_unique,segment_size))(*batch)
+        result = (local_losses,local_y_preds,local_kerns,local_biases)
+        grads_append.append(local_grads_all)
+        results.append(result)
+    # THE ISSUE IS WITH LOCAL_GRADS_ALL AS ITS A DICT. SO I JUST NEED TO DEAL WITH THIS SEPERATELY IN THE FOLLOWING LINE
+    # Concatenate results along batch axis
+    grads_cat = jax.tree_map(lambda *x: jnp.concatenate(x, axis=0), *grads_append)
+    results_cat = tuple(jnp.concatenate(r, axis=0) for r in zip(*results))
+
+    return results_cat,grads_cat
 
 # %% Training func
 
