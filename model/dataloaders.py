@@ -14,6 +14,16 @@ import numpy as np
 from collections import namedtuple
 import random
 from model.data_handler import isintuple
+from jax import vmap
+
+
+from concurrent.futures import ThreadPoolExecutor
+import threading
+from functools import lru_cache
+from typing import Sequence, Union, Any
+from functools import partial
+
+
 
 Exptdata_spikes = namedtuple('Exptdata', ['X', 'y','spikes'])
 Exptdata = namedtuple('Exptdata', ['X', 'y'])
@@ -241,9 +251,21 @@ def jnp_collate_MAML(batch):
         return jnp.asarray(batch)
 
 
+
+
 # %% FOR MAPS
 
+# # Optional: Create specialized versions for common cases
+# def jnp_collate_MAML_arrays(batch: Sequence[np.ndarray]) -> jnp.ndarray:
+#     """Optimized version specifically for numpy arrays"""
+#     return jnp.asarray(np.stack(batch))
 
+# def jnp_collate_MAML_jax(batch: Sequence[jnp.ndarray]) -> jnp.ndarray:
+#     """Optimized version specifically for JAX arrays"""
+#     return jnp.stack(batch)
+
+
+# @jax.jit
 class RetinaDatasetTRVALMAPS(torch.utils.data.Dataset):
     def __init__(self,X_trtr,y_trtr,X_trval,y_trval,transform=None):
         self.transform=transform
@@ -267,7 +289,7 @@ class RetinaDatasetTRVALMAPS(torch.utils.data.Dataset):
             y_trval = self.y_trval[index]
 
 
-        elif self.transform=='jaX_trtr':
+        elif self.transform=='jax':
             X_trtr = jnp.array(self.X_trtr[index])
             y_trtr = jnp.array(self.y_trtr[index])
             X_trval = jnp.array(self.X_trval[index])
@@ -283,60 +305,250 @@ class RetinaDatasetTRVALMAPS(torch.utils.data.Dataset):
         return X_trtr,y_trtr,X_trval,y_trval
 
 
+# %% WORKING
+import matplotlib.pyplot as plt
 
 class CombinedDatasetTRVALMAPS(torch.utils.data.Dataset):
-    def __init__(self,datasets,num_samples=256):
+    def __init__(self, datasets, num_samples=256, num_workers=12, cache_size=64):
         """
-        dataset = (n_retinas)(n_samples)(X,y)[data]
+        Args:
+            datasets: List of datasets, each containing (X_tr, y_tr, X_val, y_val) tuples
+            num_samples: Number of samples per batch
+            num_workers: Number of parallel workers
+            cache_size: Size of the LRU cache
         """
-        self.num_samples = num_samples
         self.datasets = datasets
-
+        self.num_samples = num_samples
         self.total_samples = min(len(dataset) for dataset in datasets)
-        # print(len(self.datasets))
-        # print(len(self.datasets[0]))
-        # print(len(self.datasets[0][0]))
-        # print(self.datasets[0][0][1].shape)
+        self.shape_x = self.datasets[0][0][0].shape
+        self.shape_y = self.datasets[0][0][1].shape
         
+        # Initialize parallel processing
+        self.num_workers = num_workers
+        self.thread_local = threading.local()
+        self.executor = ThreadPoolExecutor(max_workers=num_workers)
+        
+        # Initialize cache
+        self._process_batch = lru_cache(maxsize=cache_size)(self._process_batch)
+    
     def __len__(self):
         return self.total_samples // self.num_samples
     
-    def __getitem__(self,index):
-
-        combined_X_trtr=[]
-        combined_y_trtr=[]
-        combined_X_trval=[]
-        combined_y_trval=[]
-
+    def _init_thread_local_storage(self):
+        """Initialize thread-local storage for pre-allocated arrays"""
+        if not hasattr(self.thread_local, 'arrays'):
+            n_datasets = len(self.datasets)
+            self.thread_local.arrays = {
+                'X_trtr': np.zeros((n_datasets, self.num_samples, *self.shape_x), dtype=np.float32),
+                'y_trtr': np.zeros((n_datasets, self.num_samples, *self.shape_y), dtype=np.float32),
+                'X_trval': np.zeros((n_datasets, self.num_samples, *self.shape_x), dtype=np.float32),
+                'y_trval': np.zeros((n_datasets, self.num_samples, *self.shape_y), dtype=np.float32)
+            }
+    
+    def _process_batch(self, dataset_idx, start_idx, end_idx):
+        """Process and cache a single dataset batch"""
+        dataset = self.datasets[dataset_idx]
+        batch = dataset[start_idx:end_idx]
+        X_trtr_batch, y_trtr_batch, X_trval_batch, y_trval_batch = zip(batch)
+        # print(len(X_trtr_batch))
+        # print(y_trtr_batch[-1][-1].shape)
+        # plt.plot(y_trtr_batch[-1][-1])
         
-        start_idx = index*self.num_samples
+        return (
+            np.asarray(X_trtr_batch, dtype=np.float32)[0],
+            np.asarray(y_trtr_batch, dtype=np.float32)[0],
+            np.asarray(X_trval_batch, dtype=np.float32)[0],
+            np.asarray(y_trval_batch, dtype=np.float32)[0]
+        )
+    
+    def _process_dataset(self, args):
+        """Process a single dataset in parallel"""
+        self._init_thread_local_storage()
+        
+        i, start_idx, end_idx = args
+        arrays = self.thread_local.arrays
+        
+        X_trtr_batch, y_trtr_batch, X_trval_batch, y_trval_batch = self._process_batch(i, start_idx, end_idx)
+
+        return (X_trtr_batch, y_trtr_batch, X_trval_batch, y_trval_batch)
+    
+    def __getitem__(self, index):
+        start_idx = index * self.num_samples
         end_idx = start_idx + self.num_samples
-        # print(start_idx)
-        # print(end_idx)
         
-        for dataset in self.datasets:
-            samples_X_trtr = jnp.stack([dataset[i][0] for i in range(start_idx,end_idx)])
-            samples_y_trtr= jnp.stack([dataset[i][1] for i in range(start_idx,end_idx)])
-            samples_X_trval= jnp.stack([dataset[i][2] for i in range(start_idx,end_idx)])
-            samples_y_trval= jnp.stack([dataset[i][3] for i in range(start_idx,end_idx)])
+        # Create tasks for parallel processing
+        self._init_thread_local_storage()
 
-            
-            combined_X_trtr.append(samples_X_trtr)
-            combined_y_trtr.append(samples_y_trtr)
-            combined_X_trval.append(samples_X_trval)
-            combined_y_trval.append(samples_y_trval)
-
+        tasks = [(i, start_idx, end_idx) for i in range(len(self.datasets))]
         
-        combined_X_trtr = jnp.array(combined_X_trtr)
-        combined_y_trtr = jnp.array(combined_y_trtr)
-        combined_X_trval = jnp.array(combined_X_trval)
-        combined_y_trval = jnp.array(combined_y_trval)
 
+        results=list(self.executor.map(self._process_dataset, tasks))
+        X_trtr = np.stack([result[0] for result in results], axis=0)
+        y_trtr = np.stack([result[1] for result in results], axis=0)
+        X_trval = np.stack([result[2] for result in results], axis=0)
+        y_trval = np.stack([result[3] for result in results], axis=0)
 
-        return combined_X_trtr,combined_y_trtr,combined_X_trval,combined_y_trval
+        return (
+            jnp.asarray(X_trtr),
+            jnp.asarray(y_trtr),
+            jnp.asarray(X_trval),
+            jnp.asarray(y_trval)
+        )
+
+    
+    def __del__(self):
+        """Cleanup executor on deletion"""
+        if hasattr(self, 'executor'):
+            self.executor.shutdown()
     
 
-# %% Recycle
+def jnp_collate_MAMLMAPS(batch: Sequence[Any]) -> Union[jnp.ndarray, tuple]:
+    """
+    Optimized collate function for MAML data loading.
+    
+    Args:
+        batch: A sequence of data items to be collated
+        
+    Returns:
+        Collated data in JAX array format
+    """
+    # Fast path for empty batch
+    if not batch:
+        return batch
+    
+    first_elem = batch[0]
+    
+    # Fast path for JAX arrays
+    if isinstance(first_elem, jnp.ndarray):
+        return jnp.stack(batch)[0]
+    
+    # Fast path for numpy arrays
+    if isinstance(first_elem, np.ndarray):
+        return jnp.asarray(np.stack(batch))[0]
+    
+    # Handle tuples and lists
+    if isinstance(first_elem, (tuple, list)):
+        transposed = zip(*batch)
+        elem_type = type(first_elem)
+        # Use partial for faster function calls
+        collate_fn = partial(jnp_collate_MAMLMAPS)
+        return elem_type(map(collate_fn, transposed))
+    
+    # Default case: convert to JAX array
+    try:
+        return jnp.asarray(batch)
+    except:
+        # Fallback for non-array-like data
+        return batch
+
+
+# %% Original
+
+# class CombinedDatasetTRVALMAPS(torch.utils.data.Dataset):
+#     def __init__(self,datasets,num_samples=256):
+#         """
+#         dataset = (n_retinas)(n_samples)(X,y)[data]
+#         """
+#         self.num_samples = num_samples
+#         self.datasets = datasets
+
+#         self.total_samples = min(len(dataset) for dataset in datasets)
+#         # print(len(self.datasets))
+#         # print(len(self.datasets[0]))
+#         # print(len(self.datasets[0][0]))
+#         # print(self.datasets[0][0][1].shape)     # [retinas][batches][X_tr,y_tr,X_val,y_val][X,y]
+#         self.shape_x = self.datasets[0][0][0].shape 
+#         self.shape_y = self.datasets[0][0][1].shape 
+
+
+        
+#     def __len__(self):
+#         return self.total_samples // self.num_samples
+    
+#     def __getitem__(self, index):
+#         start_idx = index * self.num_samples
+#         end_idx = start_idx + self.num_samples
+        
+#         # Pre-allocate arrays with known shapes
+#         # Assuming shapes are known, replace these with actual shapes
+#         n_datasets = len(self.datasets)
+#         # Replace shape_x and shape_y with actual shapes of your data
+#         combined_X_trtr = np.empty((n_datasets, self.num_samples, *self.shape_x))
+#         combined_y_trtr = np.empty((n_datasets, self.num_samples, *self.shape_y))
+#         combined_X_trval = np.empty((n_datasets, self.num_samples, *self.shape_x))
+#         combined_y_trval = np.empty((n_datasets, self.num_samples, *self.shape_y))
+        
+#         # Process all datasets at once using vectorized operations
+#         for i, dataset in enumerate(self.datasets):
+#             batch = dataset[start_idx:end_idx]
+#             X_trtr_batch, y_trtr_batch, X_trval_batch, y_trval_batch = zip(batch)
+            
+#             # Direct numpy array conversion and assignment
+#             combined_X_trtr[i] = np.asarray(X_trtr_batch)
+#             combined_y_trtr[i] = np.asarray(y_trtr_batch)
+#             combined_X_trval[i] = np.asarray(X_trval_batch)
+#             combined_y_trval[i] = np.asarray(y_trval_batch)
+        
+#         # Single conversion to jax arrays at the end
+#         return (
+#             jnp.asarray(combined_X_trtr),
+#             jnp.asarray(combined_y_trtr),
+#             jnp.asarray(combined_X_trval),
+#             jnp.asarray(combined_y_trval)
+#         )
+    
+
+
+# class CombinedDatasetTRVALMAPS(torch.utils.data.Dataset):
+#     def __init__(self,datasets,num_samples=256):
+#         """
+#         dataset = (n_retinas)(n_samples)(X,y)[data]
+#         """
+#         self.num_samples = num_samples
+#         self.datasets = datasets
+
+#         self.total_samples = min(len(dataset) for dataset in datasets)
+#         # print(len(self.datasets))
+#         # print(len(self.datasets[0]))
+#         # print(len(self.datasets[0][0]))
+#         # print(self.datasets[0][0][1].shape)     # [retinas][batches][X_tr,y_tr,X_val,y_val][X,y]
+        
+#     def __len__(self):
+#         return self.total_samples // self.num_samples
+    
+#     def __getitem__(self,index):
+
+#         combined_X_trtr=[]
+#         combined_y_trtr=[]
+#         combined_X_trval=[]
+#         combined_y_trval=[]
+        
+#         start_idx = index*self.num_samples
+#         end_idx = start_idx + self.num_samples
+        
+#         for dataset in self.datasets:       # So for each retina dataset
+#             batch = dataset[start_idx:end_idx] 
+
+#             X_trtr, y_trtr, X_trval, y_trval = zip(batch)  # Unpacking
+#             X_trtr = np.array(X_trtr)
+#             y_trtr = np.array(y_trtr)
+#             X_trval = np.array(X_trval)
+#             y_trval = np.array(y_trval)
+
+            
+#             combined_X_trtr.append(jnp.stack(X_trtr))
+#             combined_y_trtr.append(jnp.stack(y_trtr))
+#             combined_X_trval.append(jnp.stack(X_trval))
+#             combined_y_trval.append(jnp.stack(y_trval))
+
+#         combined_X_trtr = jnp.array(combined_X_trtr)
+#         combined_y_trtr = jnp.array(combined_y_trtr)
+#         combined_X_trval = jnp.array(combined_X_trval)
+#         combined_y_trval = jnp.array(combined_y_trval)
+
+
+#         return combined_X_trtr,combined_y_trtr,combined_X_trval,combined_y_trval
+
 
 # class CombinedDataset(torch.utils.data.Dataset):
 #     def __init__(self,datasets,num_samples=256):
