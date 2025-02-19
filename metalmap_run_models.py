@@ -393,7 +393,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     # %
     combined_dataset = dataloaders.CombinedDatasetTRVALMAPS(Retinadatasets_train,num_samples=batch_size_train)
     dataloader_train = DataLoader(combined_dataset,batch_size=1,collate_fn=dataloaders.jnp_collate_MAMLMAPS,shuffle=False)
-    batch = next(iter(dataloader_train));a,b,c,d=batch
+    # batch = next(iter(dataloader_train));a,b,c,d=batch
     
     # batch_size_val = bz_ms
     # combined_dataset = dataloaders.CombinedDataset(Retinadatasets_val,datasets_q=None,num_samples=batch_size_val)
@@ -658,14 +658,15 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
                       trainingSamps_dur=trainingSamps_dur_orig,validationSamps_dur=validationSamps_dur,CONTINUE_TRAINING=CONTINUE_TRAINING,
                       idxStart_fixedLayers=idxStart_fixedLayers,idxEnd_fixedLayers=idxEnd_fixedLayers,
                       info=info,lr=rgb_lrs,lr_fac=lr_fac,use_lrscheduler=use_lrscheduler,lr_schedule=lr_schedule,batch_size=bz,initial_epoch=initial_epoch,
-                      FRAC_U_TRTR=FRAC_U_TRTR)
+                      MAX_RGCS=MAX_RGCS,FRAC_U_TRTR=FRAC_U_TRTR,BUILD_MAPS=BUILD_MAPS,nsamps_max=nsamps_max,cell_types_unique=cell_types_unique,c_tr_sum=c_tr.sum(),APPROACH=APPROACH)
     
     for key in dict_params.keys():
         params_txt[key] = dict_params[key]
     
+    for key,val in psf_params.items():
+        params_txt[key] = val
 
-
-    
+   
     fname_paramsTxt = os.path.join(path_model_save,'model_log.txt')
     if os.path.exists(fname_paramsTxt):
         f_mode = 'a'
