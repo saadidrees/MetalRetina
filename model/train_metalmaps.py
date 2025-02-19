@@ -39,6 +39,8 @@ from model.dataloaders import RetinaDataset,jnp_collate
 from torch.utils.data import DataLoader
 import re
 
+MAX_RGCS = 500
+
 
 def append_dicts(dict1, dict2):
     result = {}
@@ -122,7 +124,6 @@ def clip_grads(grads, clip_value=1.0):
         grads
     )
     return clipped_grads
-MAX_RGCS = 800
 
 @jax.jit
 def pred_psfavg(y_pred,coords,segment_size,MAX_RGCS=MAX_RGCS):   
@@ -140,12 +141,7 @@ def pred_psfavg(y_pred,coords,segment_size,MAX_RGCS=MAX_RGCS):
     spatial_x = coords[:,2]  # Shape: (M,)
     type_idx = coords[:,1] - 1  # Shape: (M,)
     u_id = coords[:,0]
-    
-    
-    # unique_ids, new_ids = jnp.unique(u_id, return_inverse=True,size=N_units+1,fill_value=-1)
-    # N_units = jnp.max(u_id) + 1
 
-    
     y_pred_allpixs = y_pred[:,spatial_y,spatial_x,type_idx].T
     # y_pred_allpixs = y_pred_allpixs*mask_tr[:,None]       # There's no need for this as segment_sum handles it because we have -1 for coords not to be used
     y_pred_sumsegs = jax.ops.segment_sum(y_pred_allpixs,u_id,MAX_RGCS)
@@ -160,14 +156,13 @@ def calc_loss(y_pred,y,coords,segment_size,N_tr,mask_tr):
         y_units = pred_psfavg(y,coords,segment_size)      # This is just going to be the actual value at a single pixel
     else:
         y_units=y
-        
-    y_pred_units = jnp.where(y_pred_units == 0, 1e-6, y_pred_units)
-    # y_units = jnp.where(y_units == 0, 1e-6, y_units)
-    # mask = jnp.ones(y_units.shape)
-    # mask = mask.at[:,N_tr:].set(0)
+    
+    y_pred_units = jnp.maximum(y_pred_units, 1e-6)
+
+    # y_pred_units = jnp.where(y_pred_units == 0, 1e-6, y_pred_units)
     loss = y_pred_units-y_units*jax.lax.log(y_pred_units)
-    loss = (loss*mask_tr[None,:])/N_tr
-    loss=jnp.nansum(loss)
+    loss = jnp.nansum((loss*mask_tr[None,:])/N_tr)
+    # loss=jnp.nansum(loss)
     
     return loss,y_units,y_pred_units
 
@@ -183,17 +178,11 @@ def task_loss(state,params,batch,coords,N_tr,segment_size,mask_tr):
     # N_points=N_points_tr
     """
     X,y = batch
-    # if jnp.ndim(y)==2:   # That is the format is units
-    #     rgb = jnp.zeros((X.shape[0],X.shape[2],X.shape[3],2),dtype=X.dtype)
-    
-        
     y_pred,state = state.apply_fn({'params': params},X,training=True,mutable=['intermediates'])
     
     # intermediates = state['intermediates']
     # dense_activations = intermediates['dense_activations'][0]
-    
     loss,y_units,y_pred_units = calc_loss(y_pred,y,coords,segment_size,N_tr,mask_tr)
-
     loss = loss + weight_regularizer(params,alpha=1e-4)
     # loss = loss + activity_regularizer(dense_activations,alpha=1e-4)
 
@@ -223,43 +212,35 @@ def train_step_metal(mdl_state,batch,weights_output,lr,dinf_tr):        # Make u
     @jax.jit
     def metal_grads(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,train_x_tr,train_y_tr,train_x_val,train_y_val,coords_tr,coords_val,N_tr,N_val,mask_tr,mask_val,conv_kern,conv_bias):
 
-        # Split the batch into inner and outer training sets
-        # PARAMETERIZE this
-        # frac_s_train = 0.5
-        # len_data = train_x.shape[0]
-        # len_s_train = int(len_data*frac_s_train)
-        
-        # batch_train = (train_x[:len_s_train],train_y_tr[:len_s_train])
-        # batch_val = (train_x[len_s_train:],train_y_val[len_s_train:])
-        
         batch_train = (train_x_tr,train_y_tr)
         batch_val = (train_x_val,train_y_val)
 
-        # N_points_val = N_task_val*segment_size
 
         # Make local model by using global params but local dense layer weights
-        local_params = global_params
-        local_params['output']['kernel'] = conv_kern
-        local_params['output']['bias'] = conv_bias
+        local_params = {**global_params, 'output': {'kernel': conv_kern, 'bias': conv_bias}}
         local_mdl_state = mdl_state.replace(params=local_params)
 
         # Calculate gradients of the local model wrt to local params    
         grad_fn = jax.value_and_grad(task_loss,argnums=1,has_aux=True)
-        (local_loss_train,y_pred_train),local_grads = grad_fn(local_mdl_state,local_params,batch_train,coords_tr,N_tr,segment_size,mask_tr)
+        (local_loss_train,_),local_grads = grad_fn(local_mdl_state,local_params,batch_train,coords_tr,N_tr,segment_size,mask_tr)
         
         # scale the local gradients according to ADAM's first step. Helps to stabilize
         # And update the parameters
-        local_params = jax.tree_map(lambda p, g: p - lr*(g/(jnp.abs(g)+1e-8)), local_params, local_grads)
+        update_fn = lambda p, g: p - lr * (g / (jnp.abs(g) + 1e-8))
+        local_params = jax.tree_map(update_fn, local_params, local_grads)
+
 
         # Calculate gradients of the loss of the resulting local model but using the validation set
         # local_mdl_state = mdl_state.replace(params=local_params)
         (local_loss_val,y_pred_val),local_grads_val = grad_fn(local_mdl_state,local_params,batch_val,coords_val,N_val,segment_size,mask_val)
         
         # Update only the Dense layer weights since we retain it
-        local_params_val = jax.tree_map(lambda p, g: p - lr*(g/(jnp.abs(g)+1e-8)), local_params, local_grads_val)
+        local_params_val = jax.tree_map(update_fn, local_params, local_grads_val)
+
         
         # Get the direction of generalization
-        local_grads_total = jax.tree_map(lambda g_1, g_2: g_1+g_2, local_grads,local_grads_val)
+        local_grads_total = jax.tree_map(jnp.add, local_grads, local_grads_val)
+
         
         # Normalize the grads to unit vector
         local_grads_total = jax.tree_map(lambda g: g/jnp.linalg.norm(g), local_grads_total)
@@ -371,18 +352,18 @@ def train_step_maml(mdl_state,batch,weights_output,lr,dinf_tr):        # Make un
         # N_points_val = N_task_val*segment_size
 
         # Make local model by using global params but local dense layer weights
-        local_params = global_params
+        # local_params = global_params
         # local_params['output']['kernel'] = conv_kern
         # local_params['output']['bias'] = conv_bias
-        local_mdl_state = mdl_state.replace(params=local_params)
+        local_mdl_state = mdl_state.replace(params=global_params)
 
         # Calculate gradients of the local model wrt to local params    
         grad_fn = jax.value_and_grad(task_loss,argnums=1,has_aux=True)
-        (local_loss_train,y_pred_train),local_grads = grad_fn(local_mdl_state,local_params,batch_train,coords_tr,N_tr,segment_size,mask_tr)
+        (local_loss_train,y_pred_train),local_grads = grad_fn(local_mdl_state,global_params,batch_train,coords_tr,N_tr,segment_size,mask_tr)
         
         # scale the local gradients according to ADAM's first step. Helps to stabilize
         # And update the parameters
-        local_params = jax.tree_map(lambda p, g: p - lr*(g/(jnp.abs(g)+1e-8)), local_params, local_grads)
+        local_params = jax.tree_map(lambda p, g: p - lr*(g/(jnp.abs(g)+1e-8)), global_params, local_grads)
 
         # Calculate gradients of the loss of the resulting local model but using the validation set
         # local_mdl_state = mdl_state.replace(params=local_params)
@@ -500,16 +481,16 @@ def train_step_maml1step(mdl_state,batch,weights_output,lr,dinf_tr):        # Ma
         # batch_val = (train_x_val,train_y_val)
 
         # Make local model by using global params but local dense layer weights
-        local_params = global_params
-        local_mdl_state = mdl_state.replace(params=local_params)
+        # local_params = global_params
+        local_mdl_state = mdl_state.replace(params=global_params)
 
         # Calculate gradients of the local model wrt to local params    
         grad_fn = jax.value_and_grad(task_loss,argnums=1,has_aux=True)
-        (local_loss_train,y_pred_train),local_grads = grad_fn(local_mdl_state,local_params,batch_train,coords_tr,N_tr,segment_size,mask_tr)
+        (local_loss_train,y_pred_train),local_grads = grad_fn(local_mdl_state,global_params,batch_train,coords_tr,N_tr,segment_size,mask_tr)
         
         # scale the local gradients according to ADAM's first step. Helps to stabilize
         # And update the parameters
-        local_params = jax.tree_map(lambda p, g: p-lr*(g/(jnp.abs(g)+1e-8)),local_params,local_grads)
+        local_params = jax.tree_map(lambda p, g: p-lr*(g/(jnp.abs(g)+1e-8)),global_params,local_grads)
       
         # Normalize the grads to unit vector
         local_grads = jax.tree_map(lambda g: g/jnp.linalg.norm(g), local_grads)
@@ -585,7 +566,7 @@ def train_step_maml1step(mdl_state,batch,weights_output,lr,dinf_tr):        # Ma
 
 def eval_step(state,batch_val,dinf_batch_val,n_batches=1e5):
     """
-    idx_task = idx_master
+    idx_task = idx_valdset
     N_val = dinf_batch_val['N_val']
     mask_val = dinf_batch_val['maskunits_val']
     coords = dinf_batch_val['umaskcoords_val']
@@ -783,7 +764,7 @@ def batched_metal_grads(fn,mdl_state, global_params,MAX_RGCS,cell_types_unique,s
 
 # %% Training func
 
-def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_tr,dinf_val,nb_epochs,path_model_save,save=False,lr_schedule=None,step_start=0,APPROACH='metal'):
+def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_tr,dinf_val,nb_epochs,path_model_save,save=False,lr_schedule=None,step_start=0,APPROACH='metal',idx_valdset=0):
     """
     RESP_FORMAT='MAPS'
     RESP_FORMAT='UNITS'
@@ -804,11 +785,11 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
     fev_epoch_train = []
     fev_epoch_val = []
 
-    idx_master = 2#7
-    dinf_batch_val = jax.tree_map(lambda x: x[idx_master] if isinstance(x, np.ndarray) else x, dinf_val)
-    dinf_batch_valtr = dict(N_val=dinf_tr['N_trtr'][idx_master],
-                            maskunits_val=dinf_tr['maskunits_trtr'][idx_master],
-                            umaskcoords_val=dinf_tr['umaskcoords_trtr'][idx_master],
+    idx_valdset = 2#7
+    dinf_batch_val = jax.tree_map(lambda x: x[idx_valdset] if isinstance(x, np.ndarray) else x, dinf_val)
+    dinf_batch_valtr = dict(N_val=dinf_tr['N_trtr'][idx_valdset],
+                            maskunits_val=dinf_tr['maskunits_trtr'][idx_valdset],
+                            umaskcoords_val=dinf_tr['umaskcoords_trtr'][idx_valdset],
                             segment_size=dinf_tr['segment_size'])
 
 
@@ -817,11 +798,18 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
     for epoch in tqdm(range(step_start,nb_epochs)):
         _ = gc.collect()
         loss_batch_train=[]
-        # t = time.time()
+        t = time.time()
+        t2=0
         # batch_train = next(iter(dataloader_train)); batch=batch_train; 
+        t1_c=[]
+        t2_c=[]
+
         for batch_train in dataloader_train:
-            current_lr = lr_schedule(mdl_state.step)               
+            current_lr = lr_schedule(mdl_state.step)     
+            # t1 = time.time()-t;print('Dataloader time: %f',t1)
+            # t1_c.append(t1)
             
+            t=time.time()
             if APPROACH == 'metal':
                 loss,mdl_state,weights_output,grads = train_step_metal(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
             elif APPROACH == 'maml':
@@ -829,41 +817,47 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
             elif APPROACH == 'maml1step':
                 loss,mdl_state,weights_output,grads = train_step_maml1step(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
 
-            else:
-                print('Invalid APPROACH')
-                break
-            # elap = time.time()-t
-            # print(elap)
-
-            # print(loss)
+            # else:
+            #     print('Invalid APPROACH')
+            #     break
+        
             loss_batch_train.append(loss)
-            # _,y,_,_ = batch_train
-            # print(mdl_state.step)
-            # print(mdl_state.opt_state[0][0])
+            # print(loss)
+
+            elap = time.time()-t
+            t1_c.append(elap)
+            # print('Train time: %f',elap)
+
+            # t2 = time.time()-t1-t;print('training step: %f',t2)
+            # t2_c.append(t2)
             
 
         assert jnp.sum(grads['Conv_0']['kernel']) != 0, 'Gradients are Zero'
             
         
-        # For validation, update the new state with weights from the idx_master task
+        # For validation, update the new state with weights from the idx_valdset task
         mdl_state_val = mdl_state
         if APPROACH != 'maml':
-            mdl_state_val.params['output']['kernel'] = weights_output[0][idx_master]
-            mdl_state_val.params['output']['bias'] = weights_output[1][idx_master]
+            mdl_state_val.params['output']['kernel'] = weights_output[0][idx_valdset]
+            mdl_state_val.params['output']['bias'] = weights_output[1][idx_valdset]
             
     
         loss_batch_val = []
-        batch = next(iter(dataloader_val))
+        # batch = next(iter(dataloader_val))
         y_val_units = np.zeros((0,dinf_batch_val['N_val']))
         y_pred_val_units = np.zeros((0,dinf_batch_val['N_val']))
-        for batch in dataloader_val:
-            batch_val = (batch[0][idx_master],batch[1][idx_master])
+        t = time.time()
+        for batch_val in dataloader_val:
             loss,y_pred,y,y_pred_units,y_units = eval_step(mdl_state_val,batch_val,dinf_batch_val)
             y_val_units = np.concatenate((y_val_units,y_units),axis=0)
             y_pred_val_units = np.concatenate((y_pred_val_units,y_pred_units),axis=0)
             loss_batch_val.append(loss)
+        
+        elap = time.time()-t
+        print('Val time: %f',elap)
 
-        loss_batch_train_test,y_pred_train,y_train,y_pred_train_units,y_train_units = eval_step(mdl_state_val,(batch_train[0][idx_master],batch_train[1][idx_master]),dinf_batch_valtr)
+        t = time.time()
+        loss_batch_train_test,y_pred_train,y_train,y_pred_train_units,y_train_units = eval_step(mdl_state_val,(batch_train[0][idx_valdset],batch_train[1][idx_valdset]),dinf_batch_valtr)
         
         loss_currEpoch_master = np.mean(loss_batch_train)
         loss_currEpoch_train = np.mean(loss_batch_train_test)
@@ -874,7 +868,7 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
         
         current_lr = lr_schedule(mdl_state.step)
         
-        temporal_width_eval = batch_val[0][idx_master].shape[0]
+        temporal_width_eval = batch_val[0].shape[1]
         fev_val,_,predCorr_val,_ = model_evaluate_new(y_units,y_pred_units,temporal_width_eval,lag=0,obs_noise=0)
         fev_val_med,predCorr_val_med = np.median(fev_val),np.median(predCorr_val)
         fev_train,_,predCorr_train,_ = model_evaluate_new(y_train_units,y_pred_train_units,temporal_width_eval,lag=0,obs_noise=0)
@@ -887,16 +881,19 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
               %(epoch+1,loss_currEpoch_master,loss_currEpoch_train,fev_train_med,predCorr_train_med,loss_currEpoch_val,fev_val_med,predCorr_val_med,current_lr))
         
             
-        fig,axs = plt.subplots(2,1,figsize=(20,10));axs=np.ravel(axs);fig.suptitle('Epoch: %d'%(epoch+1))
-        axs[0].plot(y_train_units[:200,2]);axs[0].plot(y_pred_train_units[:200,10]);axs[0].set_title('Train')
-        axs[1].plot(y_units[:,10]);axs[1].plot(y_pred_units[:,10]);axs[1].set_title('Validation')
-        plt.show()
-        plt.close()
+        # fig,axs = plt.subplots(2,1,figsize=(20,10));axs=np.ravel(axs);fig.suptitle('Epoch: %d'%(epoch+1))
+        # axs[0].plot(y_train_units[:200,2]);axs[0].plot(y_pred_train_units[:200,10]);axs[0].set_title('Train')
+        # axs[1].plot(y_units[:,10]);axs[1].plot(y_pred_units[:,10]);axs[1].set_title('Validation')
+        # plt.show()
+        # plt.close()
 
 
         if save == True:
             fname_cp = os.path.join(path_model_save,'epoch-%03d'%epoch)
             save_epoch(mdl_state,config,weights_output,fname_cp)
+            
+        elap = time.time()-t
+        print('Rest of time: %f',elap)
             
     return loss_currEpoch_master,loss_epoch_train,loss_epoch_val,mdl_state,weights_output,fev_epoch_train,fev_epoch_val
 
