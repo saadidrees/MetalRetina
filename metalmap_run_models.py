@@ -110,14 +110,14 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     if not os.path.exists(path_save_performance):
         os.makedirs(path_save_performance)
           
-# %% load train val and test datasets from saved h5 file
+# % load train val and test datasets from saved h5 file
     """
         load_h5dataset is a function to load training and validation data from h5 dataset. We can extract all data or a subset using the nsamps arguments.
         data_train, val and test are named tuples. data_train.X contains the stimulus with dimensions [samples,y pixels, x pixels]
         and data_train.y contains the spikerate normalized by median [samples,numOfCells]
     """
     BUILD_MAPS = False
-    MAX_RGCS = 800
+    MAX_RGCS = 500
 
 
     trainingSamps_dur_orig = trainingSamps_dur
@@ -231,7 +231,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         nrgcs_val.append(dict_val[fname_data_train_val_test_all[d]].y.shape[-1])
 
     
-    # %%
+    # %
     if BUILD_MAPS==False:   
         idx_unitsToTake_all_trtr=[];idx_unitsToTake_all_trval=[];idx_unitsToTake_all_val = [];
         mask_unitsToTake_all_trtr=[];mask_unitsToTake_all_trval=[];mask_unitsToTake_all_val = [];
@@ -249,7 +249,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
             idx_unitsToTake_all_val.append(idx_unitsToTake)
             mask_unitsToTake_all_val.append(mask_unitsToTake)
 
-# %%
+# %
 
     # Get unit names
     uname_train = [];uname_val = [];
@@ -381,21 +381,30 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         rgb = dataloaders.RetinaDatasetTRVALMAPS(dict_trtr[dset].X,dict_trtr[dset].y,dict_trval[dset].X,dict_trval[dset].y,transform=None)
         Retinadatasets_train.append(rgb)
        
-        rgb = dataloaders.RetinaDatasetMAML(dict_val[dset].X,dict_val[dset].y,transform=None)
-        Retinadatasets_val.append(rgb)
+        # rgb = dataloaders.RetinaDatasetMAML(dict_val[dset].X,dict_val[dset].y,transform=None)
+        # Retinadatasets_val.append(rgb)
     
        
     if APPROACH=='maml1step':
         bz_ms = int(bz_ms/2)        # Because we combine training and validation batches at training phase then
     batch_size_train = bz_ms
+    
+    
+    # %
     combined_dataset = dataloaders.CombinedDatasetTRVALMAPS(Retinadatasets_train,num_samples=batch_size_train)
-    dataloader_train = DataLoader(combined_dataset,batch_size=1,collate_fn=dataloaders.jnp_collate_MAML,shuffle=False)
+    dataloader_train = DataLoader(combined_dataset,batch_size=1,collate_fn=dataloaders.jnp_collate_MAMLMAPS,shuffle=False)
     batch = next(iter(dataloader_train));a,b,c,d=batch
-       
-    batch_size_val = bz_ms
-    combined_dataset = dataloaders.CombinedDataset(Retinadatasets_val,datasets_q=None,num_samples=batch_size_val)
-    dataloader_val = DataLoader(combined_dataset,batch_size=1,collate_fn=dataloaders.jnp_collate_MAML,shuffle=False)
-    batch = next(iter(dataloader_val));a,b=batch
+    
+    # batch_size_val = bz_ms
+    # combined_dataset = dataloaders.CombinedDataset(Retinadatasets_val,datasets_q=None,num_samples=batch_size_val)
+    # dataloader_val = DataLoader(combined_dataset,batch_size=1,collate_fn=dataloaders.jnp_collate_MAMLMAPS,shuffle=False)
+    # batch = next(iter(dataloader_val));a,b=batch
+
+    idx_valdset = 0
+    dset = fname_data_train_val_test_all[idx_valdset]   
+    RetinaDataset_val = dataloaders.RetinaDataset(dict_val[dset].X,dict_val[dset].y,transform=None)
+    dataloader_val = DataLoader(RetinaDataset_val,batch_size=512,collate_fn=dataloaders.jnp_collate);
+    # batch = next(iter(dataloader_val));a,b=batch
 
 
     # %%
@@ -404,7 +413,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     maxLen_umaskcoords_val = max([len(value['umaskcoords_val']) for value in dict_dinf.values()])
 
 
-    # ---- PACK MASKS AND COORDINATES FOR EACH RGC
+    # ---- PACK MASKS AND COORDINATES FOR} EACH RGC
     b_umaskcoords_trtr=-1*np.ones((n_tasks,maxLen_umaskcoords_tr_subtr,dinf['umaskcoords_trtr_remap'].shape[1]),dtype='int32');
     b_umaskcoords_trval=-1*np.ones((n_tasks,maxLen_umaskcoords_tr_subval,dinf['umaskcoords_trval_remap'].shape[1]),dtype='int32')
     b_umaskcoords_val=-1*np.ones((n_tasks,maxLen_umaskcoords_val,dinf['umaskcoords_val'].shape[1]),dtype='int32')
