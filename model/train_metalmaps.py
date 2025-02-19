@@ -798,7 +798,7 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
     for epoch in tqdm(range(step_start,nb_epochs)):
         _ = gc.collect()
         loss_batch_train=[]
-        t = time.time()
+        # t = time.time()
         t2=0
         # batch_train = next(iter(dataloader_train)); batch=batch_train; 
         t1_c=[]
@@ -809,7 +809,7 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
             # t1 = time.time()-t;print('Dataloader time: %f',t1)
             # t1_c.append(t1)
             
-            t=time.time()
+            # t=time.time()
             if APPROACH == 'metal':
                 loss,mdl_state,weights_output,grads = train_step_metal(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
             elif APPROACH == 'maml':
@@ -824,8 +824,8 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
             loss_batch_train.append(loss)
             # print(loss)
 
-            elap = time.time()-t
-            t1_c.append(elap)
+            # elap = time.time()-t
+            # t1_c.append(elap)
             # print('Train time: %f',elap)
 
             # t2 = time.time()-t1-t;print('training step: %f',t2)
@@ -846,17 +846,17 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
         # batch = next(iter(dataloader_val))
         y_val_units = np.zeros((0,dinf_batch_val['N_val']))
         y_pred_val_units = np.zeros((0,dinf_batch_val['N_val']))
-        t = time.time()
+        # t = time.time()
         for batch_val in dataloader_val:
             loss,y_pred,y,y_pred_units,y_units = eval_step(mdl_state_val,batch_val,dinf_batch_val)
             y_val_units = np.concatenate((y_val_units,y_units),axis=0)
             y_pred_val_units = np.concatenate((y_pred_val_units,y_pred_units),axis=0)
             loss_batch_val.append(loss)
         
-        elap = time.time()-t
-        print('Val time: %f',elap)
+        # elap = time.time()-t
+        # print('Val time: %f',elap)
 
-        t = time.time()
+        # t = time.time()
         loss_batch_train_test,y_pred_train,y_train,y_pred_train_units,y_train_units = eval_step(mdl_state_val,(batch_train[0][idx_valdset],batch_train[1][idx_valdset]),dinf_batch_valtr)
         
         loss_currEpoch_master = np.mean(loss_batch_train)
@@ -892,8 +892,8 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
             fname_cp = os.path.join(path_model_save,'epoch-%03d'%epoch)
             save_epoch(mdl_state,config,weights_output,fname_cp)
             
-        elap = time.time()-t
-        print('Rest of time: %f',elap)
+        # elap = time.time()-t
+        # print('Rest of time: %f',elap)
             
     return loss_currEpoch_master,loss_epoch_train,loss_epoch_val,mdl_state,weights_output,fev_epoch_train,fev_epoch_val
 
