@@ -22,9 +22,9 @@ base = '/home/saad/data/'
 
 
 data_pers = 'ej'
-expDate = ('trainList_8M',) #('trainList_20241115a',)
+expDate = ('trainList_test',) #('trainList_20241115a',)
 
-APPROACH = 'metal' 
+APPROACH = 'metalzero' 
 expFold = APPROACH 
 subFold = 'test'
 dataset = 'CB_mesopic_f4_8ms_sig-4'#'NATSTIM6_CORR2_mesopic-Rstar_f4_8ms',)#'NATSTIM3_CORR_mesopic-Rstar_f4_8ms  CB_CORR_mesopic-Rstar_f4_8ms
@@ -41,9 +41,9 @@ transfer_mode = ''
 info = ''
 idxStart_fixedLayers = 0#1
 idxEnd_fixedLayers = -1#15   #29 dense; 28 BN+dense; 21 conv+dense; 15 second conv; 8 first conv
-CONTINUE_TRAINING = 1
+CONTINUE_TRAINING = 0
 
-lr = 0.0001
+lr = 0.00001
 lr_fac = 1# how much to divide the learning rate when training is resumed
 use_lrscheduler=1
 lrscheduler='constant' #'exponential_decay' #dict(scheduler='stepLR',drop=0.01,steps_drop=20,initial_lr=lr)
@@ -65,7 +65,7 @@ chan4_n=128#50
 filt4_size=3
 filt4_3rdDim=0
 nb_epochs=10#42         # setting this to 0 only runs evaluation
-bz_ms=16#64#10000#5000
+bz_ms=2#64#10000#5000
 BatchNorm=1
 MaxPool=2
 runOnCluster=0
@@ -73,7 +73,7 @@ num_trials=1
 
 BatchNorm_train = 1
 saveToCSV=1
-trainingSamps_dur = -1#1#20 #-1 #0.05 # minutes per dataset
+trainingSamps_dur = 1#1#20 #-1 #0.05 # minutes per dataset
 validationSamps_dur=0.5
 testSamps_dur=0.5
 USE_WANDB = 0

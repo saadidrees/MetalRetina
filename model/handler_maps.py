@@ -52,7 +52,16 @@ def bytestostring(arr):
     rgb = np.array([a.decode('utf-8') for a in arr])
     return rgb
 
-def arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf_params,info_unitSplit=None,BUILD_MAPS=False):
+def normalize_responses(data,norm_val):
+    y = data.y
+    y = y/norm_val[None,:]
+    
+    return Exptdata_spikes(data.X,y,data.spikes)
+
+def arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf_params,info_unitSplit=None,BUILD_MAPS=False,MODE='training'):
+    """
+    mode can be either training in whic case we split units across training and validation sets. In validation mode we keep all units for validation
+    """
     dinf = {}
     dinf['unit_locs'] = parameters['unit_locs']
     dinf['unit_types'] = parameters['unit_types']
@@ -60,12 +69,17 @@ def arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf
     
     # dinf,data_train,data_val = remove_boundary_units(dinf,data_train,data_val)  # This step is already done in dataset creation stage
     
-    
-    if info_unitSplit==None and frac_train_units==1:
-        data_train,_,_ = buildRespMap(data_train.X,data_train.y,data_train.spikes,parameters['unit_locs'],parameters['unit_types'])
-        data_val,_,_ = buildRespMap(data_val.X,data_val.y,data_val.spikes,parameters['unit_locs'],parameters['unit_types'])
+    rgb = np.concatenate((data_train.y,data_val.y),axis=0)
+    max_resp = np.max(rgb,axis=0)
+    data_train = normalize_responses(data_train,max_resp)
+    data_val = normalize_responses(data_val,max_resp)
 
-        idx_units_train = np.arange(dinf['unames'])
+    
+    if (info_unitSplit==None and frac_train_units==1) or MODE=='validation':
+        # data_train,_,_ = buildRespMap(data_train.X,data_train.y,data_train.spikes,parameters['unit_locs'],parameters['unit_types'])
+        # data_val,_,_ = buildRespMap(data_val.X,data_val.y,data_val.spikes,parameters['unit_locs'],parameters['unit_types'])
+
+        idx_units_train = np.arange(len(dinf['unames']))
         idx_units_val = idx_units_train
 
     
@@ -103,13 +117,15 @@ def arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf
                                                                                     dinf['unit_types'][idx_units_val],
                                                                                     psf_params,BUILD_MAPS=BUILD_MAPS)
     
-    intersection = check_psf_overlap(dinf['umaskcoords_train'],dinf['umaskcoords_val'])
-    for t in range(len(intersection)):
-        print('%s: Number of overlapping pixels in Cell Type %d: %d'%(exp,t+1,len(intersection[t])))
-
-    all_empty = np.all([arr.size == 0 for arr in intersection])
-    if all_empty==False:
-        data_train,dinf['umasks_train'],dinf['umaskcoords_train'] = remove_overlaps_across(data_train,dinf['umaskcoords_train'],dinf['umasks_train'],
+    
+    if MODE=='training':     # Only do this thing if the mode is not validation
+        intersection = check_psf_overlap(dinf['umaskcoords_train'],dinf['umaskcoords_val'])
+        for t in range(len(intersection)):
+            print('%s: Number of overlapping pixels in Cell Type %d: %d'%(exp,t+1,len(intersection[t])))
+    
+        all_empty = np.all([arr.size == 0 for arr in intersection])
+        if all_empty==False:
+            data_train,dinf['umasks_train'],dinf['umaskcoords_train'] = remove_overlaps_across(data_train,dinf['umaskcoords_train'],dinf['umasks_train'],
                                                                                                           dinf['unit_types'][idx_units_train],intersection,BUILD_MAPS=BUILD_MAPS)
     assert len(dinf['umaskcoords_train'])/dinf['segment_size'] ==  dinf['N_units_train']
     assert len(dinf['umaskcoords_val'])/dinf['segment_size'] ==  dinf['N_units_val']

@@ -183,7 +183,7 @@ def task_loss(state,params,batch,coords,N_tr,segment_size,mask_tr):
     # intermediates = state['intermediates']
     # dense_activations = intermediates['dense_activations'][0]
     loss,y_units,y_pred_units = calc_loss(y_pred,y,coords,segment_size,N_tr,mask_tr)
-    loss = loss + weight_regularizer(params,alpha=1e-4)
+    loss = loss + weight_regularizer(params,alpha=1e-3)
     # loss = loss + activity_regularizer(dense_activations,alpha=1e-4)
 
     return loss,y_pred
@@ -296,7 +296,7 @@ def train_step_metal(mdl_state,batch,weights_output,lr,dinf_tr):        # Make u
                                         
     local_losses_summed = jnp.sum(local_losses)
     local_grads_summed = jax.tree_map(lambda g: jnp.sum(g,axis=0), local_grads_all)
-    
+    local_grads_summed = clip_grads(local_grads_summed)
     
     weights_output = (local_kerns,local_biases)
     
@@ -339,7 +339,7 @@ def train_step_metalzero(mdl_state,batch,weights_output,lr,dinf_tr):        # Ma
         loss,mdl_state,weights_output,grads = train_step_metal(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
     """
     @jax.jit
-    def metalzero_grads(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,train_x_tr,train_y_tr,train_x_val,train_y_val,coords_tr,coords_val,N_tr,N_val,mask_tr,mask_val,conv_kern,conv_bias):
+    def metalzero_grads(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,lr_inner,train_x_tr,train_y_tr,train_x_val,train_y_val,coords_tr,coords_val,N_tr,N_val,mask_tr,mask_val,conv_kern,conv_bias):
 
        
         batch_train = (train_x_tr,train_y_tr)
@@ -352,14 +352,14 @@ def train_step_metalzero(mdl_state,batch,weights_output,lr,dinf_tr):        # Ma
         
         # scale the local gradients according to ADAM's first step. Helps to stabilize
         # And update the parameters
-        local_params = jax.tree_map(lambda p, g: p - lr*(g/(jnp.abs(g)+1e-8)), global_params, local_grads)
+        local_params = jax.tree_map(lambda p, g: p - lr_inner*(g/(jnp.abs(g)+1e-8)), global_params, local_grads)
 
         # Calculate gradients of the loss of the resulting local model but using the validation set
         # local_mdl_state = mdl_state.replace(params=local_params)
         (local_loss_val,y_pred_val),local_grads_val = grad_fn(local_mdl_state,local_params,batch_val,coords_val,N_val,segment_size,mask_val)
         
         # Update only the Dense layer weights since we retain it
-        local_params_val = jax.tree_map(lambda p, g: p - lr*(g/(jnp.abs(g)+1e-8)), local_params, local_grads_val)
+        local_params_val = jax.tree_map(lambda p, g: p - lr_inner*(g/(jnp.abs(g)+1e-8)), local_params, local_grads_val)
         
         # Get the direction of generalization
         local_grads_total = jax.tree_map(lambda g_1, g_2: g_1+g_2, local_grads,local_grads_val)
@@ -396,18 +396,20 @@ def train_step_metalzero(mdl_state,batch,weights_output,lr,dinf_tr):        # Ma
     MAX_RGCS = dinf_tr['MAX_RGCS']
     cell_types_unique = dinf_tr['cell_types_unique']
     segment_size = dinf_tr['segment_size']
+    
+    lr_inner = lr/10
 
 
     if NUM_SPLITS==0:
         local_losses,local_y_preds,local_mdl_states,local_grads_all,local_kerns,local_biases = jax.vmap(Partial(metalzero_grads,\
-                                                                                                                  mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size))\
+                                                                                                                  mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,lr_inner))\
                                                                                                                   (train_x_tr,train_y_tr,train_x_val,train_y_val,
                                                                                                                    umaskcoords_trtr,umaskcoords_trval,N_trtr,N_trval,mask_trtr,mask_trval,
                                                                                                                    conv_kern_all,conv_bias_all)
                                                                                                               
     else:       # Otherwise split the vmap. This avoids running out of GPU memory when we have many retinas and large batch size
         (local_losses, local_y_preds, local_kerns, local_biases),local_grads_all = batched_metal_grads(metalzero_grads,
-        mdl_state, global_params,MAX_RGCS,cell_types_unique,segment_size, train_x_tr, train_y_tr, train_x_val, train_y_val,
+        mdl_state, global_params,MAX_RGCS,cell_types_unique,segment_size,lr_inner,train_x_tr, train_y_tr, train_x_val, train_y_val,
         umaskcoords_trtr, umaskcoords_trval, N_trtr, N_trval, mask_trtr, mask_trval, conv_kern_all, conv_bias_all, 
         NUM_SPLITS=NUM_SPLITS)
                                                                                                           
@@ -415,7 +417,8 @@ def train_step_metalzero(mdl_state,batch,weights_output,lr,dinf_tr):        # Ma
                   
     local_losses_summed = jnp.sum(local_losses)
     local_grads_summed = jax.tree_map(lambda g: jnp.sum(g,axis=0), local_grads_all)
-    
+    local_grads_summed = clip_grads(local_grads_summed)
+
     
     weights_output = (local_kerns,local_biases)
     
@@ -460,7 +463,7 @@ def train_step_metalzero1step(mdl_state,batch,weights_output,lr,dinf_tr):       
         loss,mdl_state,weights_output,grads = train_step_metal(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
     """
     @jax.jit
-    def metalzero_grads1step(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,train_x_tr,train_y_tr,train_x_val,train_y_val,coords_tr,coords_val,N_tr,N_val,mask_tr,mask_val,conv_kern,conv_bias):
+    def metalzero_grads1step(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,lr_inner,train_x_tr,train_y_tr,train_x_val,train_y_val,coords_tr,coords_val,N_tr,N_val,mask_tr,mask_val,conv_kern,conv_bias):
        
         train_x = jnp.concatenate((train_x_tr,train_x_val),axis=0)
         train_y = jnp.concatenate((train_y_tr,train_y_val),axis=0)
@@ -478,7 +481,7 @@ def train_step_metalzero1step(mdl_state,batch,weights_output,lr,dinf_tr):       
         
         # scale the local gradients according to ADAM's first step. Helps to stabilize
         # And update the parameters
-        local_params = jax.tree_map(lambda p, g: p-lr*(g/(jnp.abs(g)+1e-8)),global_params,local_grads)
+        local_params = jax.tree_map(lambda p, g: p-lr_inner*(g/(jnp.abs(g)+1e-8)),global_params,local_grads)
       
         # Normalize the grads to unit vector
         local_grads = jax.tree_map(lambda g: g/jnp.linalg.norm(g), local_grads)
@@ -511,18 +514,19 @@ def train_step_metalzero1step(mdl_state,batch,weights_output,lr,dinf_tr):       
     MAX_RGCS = dinf_tr['MAX_RGCS']
     cell_types_unique = dinf_tr['cell_types_unique']
     segment_size = dinf_tr['segment_size']
+    lr_inner = lr/10
 
 
     if NUM_SPLITS==0:
         local_losses,local_y_preds,local_mdl_states,local_grads_all,local_kerns,local_biases = jax.vmap(Partial(metalzero_grads1step,\
-                                                                                                                  mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size))\
+                                                                                                                  mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,lr_inner))\
                                                                                                                   (train_x_tr,train_y_tr,train_x_val,train_y_val,
                                                                                                                    umaskcoords_trtr,umaskcoords_trval,N_trtr,N_trval,mask_trtr,mask_trval,
                                                                                                                    conv_kern_all,conv_bias_all)
                                                                                                               
     else:       # Otherwise split the vmap. This avoids running out of GPU memory when we have many retinas and large batch size
         (local_losses, local_y_preds, local_kerns, local_biases),local_grads_all = batched_metal_grads(metalzero_grads1step,
-        mdl_state, global_params,MAX_RGCS,cell_types_unique,segment_size, train_x_tr, train_y_tr, train_x_val, train_y_val,
+        mdl_state, global_params,MAX_RGCS,cell_types_unique,segment_size,lr_inner,train_x_tr, train_y_tr, train_x_val, train_y_val,
         umaskcoords_trtr, umaskcoords_trval, N_trtr, N_trval, mask_trtr, mask_trval, conv_kern_all, conv_bias_all, 
         NUM_SPLITS=NUM_SPLITS)
                                                                                                           
@@ -530,7 +534,8 @@ def train_step_metalzero1step(mdl_state,batch,weights_output,lr,dinf_tr):       
                   
     local_losses_summed = jnp.sum(local_losses)
     local_grads_summed = jax.tree_map(lambda g: jnp.sum(g,axis=0), local_grads_all)
-    
+    local_grads_summed = clip_grads(local_grads_summed)
+
     
     weights_output = (local_kerns,local_biases)
     
@@ -716,7 +721,7 @@ def load_h5_to_nested_dict(group):
             result[key] = item[()]
     return result
 
-def save_epoch(state,config,weights_output,fname_cp,weights_all=None):
+def save_epoch(state,config,weights_output,fname_cp,weights_all=None,aux=None):
     def save_nested_dict_to_h5(group, dictionary):
         for key, item in dictionary.items():
             if isinstance(item, dict):
@@ -744,6 +749,11 @@ def save_epoch(state,config,weights_output,fname_cp,weights_all=None):
         with h5py.File(fname_weights_all,'w') as f:
             save_nested_dict_to_h5(f,weights_all)
     
+    if aux!=None:
+        fname_aux = os.path.join(fname_cp,'batch_metrics.h5')
+        with h5py.File(fname_aux,'w') as f:
+            save_nested_dict_to_h5(f,aux)
+
 
 
     
@@ -889,7 +899,7 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
         
         # For validation, update the new state with weights from the idx_valdset task
         mdl_state_val = mdl_state
-        if APPROACH != 'metalzero':
+        if APPROACH == 'metal':
             mdl_state_val.params['output']['kernel'] = weights_output[0][idx_valdset]
             mdl_state_val.params['output']['bias'] = weights_output[1][idx_valdset]
             
@@ -939,10 +949,11 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
         # plt.show()
         # plt.close()
 
-
+        aux = dict(loss_batch_train=np.array(loss_batch_train))
+        
         if save == True:
             fname_cp = os.path.join(path_model_save,'epoch-%03d'%epoch)
-            save_epoch(mdl_state,config,weights_output,fname_cp)
+            save_epoch(mdl_state,config,weights_output,fname_cp,aux=aux)
             
         # elap = time.time()-t
         # print('Rest of time: %f',elap)

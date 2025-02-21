@@ -12,7 +12,7 @@ from model.parser import parser_run_model
 
 
 def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
-                            path_existing_mdl='',idxStart_fixedLayers=0,idxEnd_fixedLayers=-1,transfer_mode='finetuning',APPROACH='maml',
+                            path_existing_mdl='',idxStart_fixedLayers=0,idxEnd_fixedLayers=-1,transfer_mode='finetuning',APPROACH='metalzero',
                             saveToCSV=1,runOnCluster=0,
                             temporal_width=40, thresh_rr=0,
                             chans_bp=1,
@@ -51,7 +51,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     from model.data_handler import prepare_data_cnn2d_maps,isintuple
     from model import data_handler_ej
     from model.data_handler_mike import load_h5Dataset
-    from model.performance import model_evaluate_new, estimate_noise
+    from model.performance import model_evaluate_new
     import model.paramsLogger
     import model.utils_si
     
@@ -352,7 +352,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     
     # data_train = dataset_shuffle(data_train,n_train)
 
- # %% Prepare dataloaders for MAML Training
+ # %% Prepare dataloaders for metalzero Training
         
     
     """
@@ -381,11 +381,11 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         rgb = dataloaders.RetinaDatasetTRVALMAPS(dict_trtr[dset].X,dict_trtr[dset].y,dict_trval[dset].X,dict_trval[dset].y,transform=None)
         Retinadatasets_train.append(rgb)
        
-        # rgb = dataloaders.RetinaDatasetMAML(dict_val[dset].X,dict_val[dset].y,transform=None)
+        # rgb = dataloaders.RetinaDatasetmetalzero(dict_val[dset].X,dict_val[dset].y,transform=None)
         # Retinadatasets_val.append(rgb)
     
        
-    if APPROACH=='maml1step':
+    if APPROACH=='metalzero1step':
         bz_ms = int(bz_ms/2)        # Because we combine training and validation batches at training phase then
     batch_size_train = bz_ms
     
@@ -397,7 +397,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     
     # batch_size_val = bz_ms
     # combined_dataset = dataloaders.CombinedDataset(Retinadatasets_val,datasets_q=None,num_samples=batch_size_val)
-    # dataloader_val = DataLoader(combined_dataset,batch_size=1,collate_fn=dataloaders.jnp_collate_MAMLMAPS,shuffle=False)
+    # dataloader_val = DataLoader(combined_dataset,batch_size=1,collate_fn=dataloaders.jnp_collate_metalzeroMAPS,shuffle=False)
     # batch = next(iter(dataloader_val));a,b=batch
 
     idx_valdset = 0
@@ -501,7 +501,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     n_batches = len(dataloader_train)#np.ceil(len(data_train.X)/bz)
     
     if lrscheduler == 'exponential_decay':
-        lr_schedule = optax.exponential_decay(init_value=lr,transition_steps=n_batches*10,decay_rate=0.75,staircase=True,transition_begin=0)
+        lr_schedule = optax.exponential_decay(init_value=lr,transition_steps=n_batches*1,decay_rate=0.75,staircase=True,transition_begin=0)
     
     elif lrscheduler == 'warmup_exponential_decay':
         
@@ -514,6 +514,8 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         # decay_schedule = optax.linear_schedule(init_value=max_lr,end_value=min_lr,transition_steps=n_batches*n_decay)
         decay_schedule = optax.exponential_decay(init_value=max_lr,transition_steps=n_batches*10,decay_rate=0.5,staircase=True,transition_begin=0)
         lr_schedule = optax.join_schedules(schedules=[warmup_schedule,decay_schedule],boundaries=[n_batches*n_warmup])
+    elif lrscheduler=='linear':
+        lr_schedule = optax.linear_schedule(init_value=lr,end_value=1e-9,transition_steps=n_batches*50)
 
     else:
         lr_schedule = optax.constant_schedule(lr)
@@ -523,7 +525,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     epochs_steps = np.arange(0,nb_epochs*n_batches,n_batches)
     rgb_lrs = [lr_schedule(i) for i in epochs_steps]
     rgb_lrs = np.array(rgb_lrs)
-    # plt.plot(epochs,rgb_lrs);plt.show()
+    plt.plot(epochs,rgb_lrs);plt.show()
     print(np.array(rgb_lrs))
 
 # %% Select model 
@@ -679,7 +681,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     model.paramsLogger.dictToTxt(params_txt,fname_paramsTxt,f_mode='a')
 
     
-# %% Train model MAML
+# %% Train model metalzero
     t_elapsed = 0
     t = time.time()
     approach=APPROACH
@@ -866,10 +868,10 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
 
     
 # # val_loss,pred_rate,y = train_singleretunits.eval_step(mdl_state,(x_train,y_train))
-#     _,pred_train,_ = maml.eval_step(mdl_state,(x_train,y_train),mask_unitsToTake_all[idx_dset])
+#     _,pred_train,_ = metalzero.eval_step(mdl_state,(x_train,y_train),mask_unitsToTake_all[idx_dset])
 #     pred_train = pred_train[:,mask_unitsToTake_all[idx_dset]==1]
 #     # _,pred_val,_ = train_singleretunits.eval_step(mdl_state,(x_val,y_val))
-#     _,pred_test,_ = maml.eval_step(mdl_state,(x_test,y_test),mask_unitsToTake_all[idx_dset])
+#     _,pred_test,_ = metalzero.eval_step(mdl_state,(x_test,y_test),mask_unitsToTake_all[idx_dset])
 #     pred_test = pred_test[:,mask_unitsToTake_all[idx_dset]==1]
     
 #     # for i in range(100):
@@ -1030,7 +1032,7 @@ if __name__ == "__main__":
 
 # %% Recycle
 """
-    # % Prepare dataloaders for MAML Training
+    # % Prepare dataloaders for metalzero Training
     
     n_tasks = len(fname_data_train_val_test_all)    
     frac_queries = 0.5 # percent
@@ -1044,16 +1046,16 @@ if __name__ == "__main__":
     for d in range(len(fname_data_train_val_test_all)):
         dset = fname_data_train_val_test_all[d]
         
-        rgb = dataloaders.RetinaDatasetMAML(data_train_s[dset].X,data_train_s[dset].y,transform=None)
+        rgb = dataloaders.RetinaDatasetmetalzero(data_train_s[dset].X,data_train_s[dset].y,transform=None)
         Retinadatasets_train_s.append(rgb)
         
-        rgb = dataloaders.RetinaDatasetMAML(data_train_q[dset].X,data_train_q[dset].y,transform=None)
+        rgb = dataloaders.RetinaDatasetmetalzero(data_train_q[dset].X,data_train_q[dset].y,transform=None)
         Retinadatasets_train_q.append(rgb)
 
     
     batch_size_train = 256
     combined_dataset = dataloaders.CombinedDataset(Retinadatasets_train_s,Retinadatasets_train_q,num_samples=batch_size_train)
-    dataloader_train = DataLoader(combined_dataset,batch_size=1,collate_fn=dataloaders.jnp_collate_MAML,shuffle=False)
+    dataloader_train = DataLoader(combined_dataset,batch_size=1,collate_fn=dataloaders.jnp_collate_metalzero,shuffle=False)
     batch = next(iter(dataloader_train));a,b,c,d=batch
     
     
@@ -1066,12 +1068,12 @@ if __name__ == "__main__":
     for d in range(len(fname_data_train_val_test_all)):
         dset = fname_data_train_val_test_all[d]
         
-        rgb = dataloaders.RetinaDatasetMAML(data_val_s[dset].X,data_val_s[dset].y,transform='jax')
+        rgb = dataloaders.RetinaDatasetmetalzero(data_val_s[dset].X,data_val_s[dset].y,transform='jax')
         Retinadatasets_val.append(rgb)
         
     batch_size_val = 256
     combined_dataset = dataloaders.CombinedDataset(Retinadatasets_val,None,num_samples=batch_size_val)
-    dataloader_val = DataLoader(combined_dataset,batch_size=1,collate_fn=dataloaders.jnp_collate_MAML,shuffle=False)
+    dataloader_val = DataLoader(combined_dataset,batch_size=1,collate_fn=dataloaders.jnp_collate_metalzero,shuffle=False)
     batch = next(iter(dataloader_val));a,b=batch
     
 
@@ -1083,7 +1085,7 @@ if __name__ == "__main__":
     ft_dset_name = re.split('_',ft_dset_name)[0]
     
     raw_restored = orbax_checkpointer.restore(weight_file)
-    mdl_state = maml.load(mdl,raw_restored['model'],lr)
+    mdl_state = metalzero.load(mdl,raw_restored['model'],lr)
     
     
     # Arrange the data
@@ -1134,14 +1136,14 @@ if __name__ == "__main__":
     plt.plot(epochs,rgb_lrs);plt.show()
 
     layers_finetune = ('Dense_0','LayerNorm_4','LayerNorm_IN') #
-    ft_params_fixed,ft_params_trainable = maml.split_dict(mdl_state.params,layers_finetune)
+    ft_params_fixed,ft_params_trainable = metalzero.split_dict(mdl_state.params,layers_finetune)
 
     
     dict_params['nout'] = ft_n_units        # CREATE THE MODEL BASED ON THE SPECS OF THE FIRST DATASET
     # model_func = getattr(models_jax,mdl_name)
     model_func = getattr(models_jax,'CNN2D_FT')
     ft_mdl = model_func
-    ft_mdl_state,ft_mdl,ft_config = maml.initialize_model(ft_mdl,dict_params,inp_shape,lr,save_model=True,lr_schedule=lr_schedule)
+    ft_mdl_state,ft_mdl,ft_config = metalzero.initialize_model(ft_mdl,dict_params,inp_shape,lr,save_model=True,lr_schedule=lr_schedule)
     models_jax.model_summary(ft_mdl,inp_shape,console_kwargs={'width':180})
 
     
@@ -1177,7 +1179,7 @@ if __name__ == "__main__":
     # optimizer = optax.adam(learning_rate=ft_lr_schedule) #,weight_decay=1e-4)
     optimizer = optax.multi_transform(optimizers, param_labels)
 
-    ft_mdl_state = maml.TrainState.create(
+    ft_mdl_state = metalzero.TrainState.create(
                 apply_fn=ft_mdl.apply,
                 params={**ft_params_trainable,**ft_params_fixed},
                 tx=optimizer)
@@ -1187,13 +1189,13 @@ if __name__ == "__main__":
     if not os.path.exists(ft_path_model_save):
         os.makedirs(ft_path_model_save)
 
-    ft_loss_epoch_train,ft_loss_epoch_val,ft_mdl_state,fev_epoch_train,fev_epoch_val,lr_epoch,lr_step = maml.ft_train(
+    ft_loss_epoch_train,ft_loss_epoch_val,ft_mdl_state,fev_epoch_train,fev_epoch_val,lr_epoch,lr_step = metalzero.ft_train(
         ft_mdl_state,ft_params_fixed,config,ft_data_train,ft_data_val,batch_size,ft_nb_epochs,ft_path_model_save,save=True,ft_lr_schedule=ft_lr_schedule)
 
-    ft_val_loss,pred_rate_val,y_val = maml.ft_eval_step(ft_mdl_state,ft_params_fixed,dataloader_val_val)
+    ft_val_loss,pred_rate_val,y_val = metalzero.ft_eval_step(ft_mdl_state,ft_params_fixed,dataloader_val_val)
     fev_val, fracExVar_val, predCorr_val, rrCorr_val = model_evaluate_new(y_val,pred_rate_val,temporal_width_eval,lag=int(0),obs_noise=0)
 
-    ft_test_loss,pred_rate_test,y_test = maml.ft_eval_step(ft_mdl_state,ft_params_fixed,dataloader_test)
+    ft_test_loss,pred_rate_test,y_test = metalzero.ft_eval_step(ft_mdl_state,ft_params_fixed,dataloader_test)
     fev_test, fracExVar_val, predCorr_test, rrCorr_test = model_evaluate_new(y_test,pred_rate_test,temporal_width_eval,lag=int(0),obs_noise=0)
 
     plt.plot(fev_epoch_val)        
