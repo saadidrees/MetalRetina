@@ -126,6 +126,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         
     # Check whether the filename has multiple datasets that need to be merged
     if fname_data_train_val_test.endswith('.txt'):
+        trainList = os.path.split(fname_data_train_val_test)[-1][:-4]
         with open(fname_data_train_val_test, 'r') as f:
             expDates = f.readlines()
         expDates = [line.strip() for line in expDates]
@@ -142,6 +143,8 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
 
     else:
         fname_data_train_val_test_all = fname_data_train_val_test.split('+')
+    
+    path_model_save_base = os.path.join(path_model_save_base,APPROACH,trainList)
     
     # Get the total num of samples and RGCs in each dataset
     nsamps_alldsets = []
