@@ -341,20 +341,9 @@ def train_step_metalzero(mdl_state,batch,weights_output,lr,dinf_tr):        # Ma
     @jax.jit
     def metalzero_grads(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,train_x_tr,train_y_tr,train_x_val,train_y_val,coords_tr,coords_val,N_tr,N_val,mask_tr,mask_val,conv_kern,conv_bias):
 
-        # Split the batch into inner and outer training sets
-        # PARAMETERIZE this
-        # frac_s_train = 0.5
-        # len_data = train_x.shape[0]
-        # len_s_train = int(len_data*frac_s_train)
-        
+       
         batch_train = (train_x_tr,train_y_tr)
         batch_val = (train_x_val,train_y_val)
-        # N_points_val = N_task_val*segment_size
-
-        # Make local model by using global params but local dense layer weights
-        # local_params = global_params
-        # local_params['output']['kernel'] = conv_kern
-        # local_params['output']['bias'] = conv_bias
         local_mdl_state = mdl_state.replace(params=global_params)
 
         # Calculate gradients of the local model wrt to local params    
@@ -381,7 +370,6 @@ def train_step_metalzero(mdl_state,batch,weights_output,lr,dinf_tr):        # Ma
         # Scale vectors by num of RGCs
         scaleFac = (N_tr+N_val)/MAX_RGCS
         local_grads_total = jax.tree_map(lambda g: g*scaleFac, local_grads_total)
-
 
 
         # Record dense layer weights
@@ -870,8 +858,8 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
 
         for batch_train in dataloader_train:
             current_lr = lr_schedule(mdl_state.step)     
-            t1 = time.time()-t;print('Dataloader time: %f',t1)
-            t1_c.append(t1)
+            # t1 = time.time()-t;print('Dataloader time: %f',t1)
+            # t1_c.append(t1)
             
             # t=time.time()
             if APPROACH == 'metal':
