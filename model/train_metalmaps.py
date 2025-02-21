@@ -319,7 +319,7 @@ def train_step_metal(mdl_state,batch,weights_output,lr,dinf_tr):        # Make u
 
 
 @jax.jit
-def train_step_maml(mdl_state,batch,weights_output,lr,dinf_tr):        # Make unit vectors then scale by num of RGCs
+def train_step_metalzero(mdl_state,batch,weights_output,lr,dinf_tr):        # Make unit vectors then scale by num of RGCs
     """
     State is the grand model state that actually gets updated
     state_task is the "state" after gradients are applied for a specific task
@@ -339,7 +339,7 @@ def train_step_maml(mdl_state,batch,weights_output,lr,dinf_tr):        # Make un
         loss,mdl_state,weights_output,grads = train_step_metal(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
     """
     @jax.jit
-    def maml_grads(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,train_x_tr,train_y_tr,train_x_val,train_y_val,coords_tr,coords_val,N_tr,N_val,mask_tr,mask_val,conv_kern,conv_bias):
+    def metalzero_grads(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,train_x_tr,train_y_tr,train_x_val,train_y_val,coords_tr,coords_val,N_tr,N_val,mask_tr,mask_val,conv_kern,conv_bias):
 
         # Split the batch into inner and outer training sets
         # PARAMETERIZE this
@@ -411,14 +411,14 @@ def train_step_maml(mdl_state,batch,weights_output,lr,dinf_tr):        # Make un
 
 
     if NUM_SPLITS==0:
-        local_losses,local_y_preds,local_mdl_states,local_grads_all,local_kerns,local_biases = jax.vmap(Partial(maml_grads,\
+        local_losses,local_y_preds,local_mdl_states,local_grads_all,local_kerns,local_biases = jax.vmap(Partial(metalzero_grads,\
                                                                                                                   mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size))\
                                                                                                                   (train_x_tr,train_y_tr,train_x_val,train_y_val,
                                                                                                                    umaskcoords_trtr,umaskcoords_trval,N_trtr,N_trval,mask_trtr,mask_trval,
                                                                                                                    conv_kern_all,conv_bias_all)
                                                                                                               
     else:       # Otherwise split the vmap. This avoids running out of GPU memory when we have many retinas and large batch size
-        (local_losses, local_y_preds, local_kerns, local_biases),local_grads_all = batched_metal_grads(maml_grads,
+        (local_losses, local_y_preds, local_kerns, local_biases),local_grads_all = batched_metal_grads(metalzero_grads,
         mdl_state, global_params,MAX_RGCS,cell_types_unique,segment_size, train_x_tr, train_y_tr, train_x_val, train_y_val,
         umaskcoords_trtr, umaskcoords_trval, N_trtr, N_trval, mask_trtr, mask_trval, conv_kern_all, conv_bias_all, 
         NUM_SPLITS=NUM_SPLITS)
@@ -451,7 +451,7 @@ def train_step_maml(mdl_state,batch,weights_output,lr,dinf_tr):        # Make un
 
 
 @jax.jit
-def train_step_maml1step(mdl_state,batch,weights_output,lr,dinf_tr):        # Make unit vectors then scale by num of RGCs
+def train_step_metalzero1step(mdl_state,batch,weights_output,lr,dinf_tr):        # Make unit vectors then scale by num of RGCs
     """
     State is the grand model state that actually gets updated
     state_task is the "state" after gradients are applied for a specific task
@@ -472,7 +472,7 @@ def train_step_maml1step(mdl_state,batch,weights_output,lr,dinf_tr):        # Ma
         loss,mdl_state,weights_output,grads = train_step_metal(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
     """
     @jax.jit
-    def maml_grads1step(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,train_x_tr,train_y_tr,train_x_val,train_y_val,coords_tr,coords_val,N_tr,N_val,mask_tr,mask_val,conv_kern,conv_bias):
+    def metalzero_grads1step(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,train_x_tr,train_y_tr,train_x_val,train_y_val,coords_tr,coords_val,N_tr,N_val,mask_tr,mask_val,conv_kern,conv_bias):
        
         train_x = jnp.concatenate((train_x_tr,train_x_val),axis=0)
         train_y = jnp.concatenate((train_y_tr,train_y_val),axis=0)
@@ -482,7 +482,7 @@ def train_step_maml1step(mdl_state,batch,weights_output,lr,dinf_tr):        # Ma
 
         # Make local model by using global params but local dense layer weights
         # local_params = global_params
-        local_mdl_state = mdl_state.replace(params=global_params)
+        local_mdl_state = mdl_state#.replace(params=global_params)
 
         # Calculate gradients of the local model wrt to local params    
         grad_fn = jax.value_and_grad(task_loss,argnums=1,has_aux=True)
@@ -526,14 +526,14 @@ def train_step_maml1step(mdl_state,batch,weights_output,lr,dinf_tr):        # Ma
 
 
     if NUM_SPLITS==0:
-        local_losses,local_y_preds,local_mdl_states,local_grads_all,local_kerns,local_biases = jax.vmap(Partial(maml_grads1step,\
+        local_losses,local_y_preds,local_mdl_states,local_grads_all,local_kerns,local_biases = jax.vmap(Partial(metalzero_grads1step,\
                                                                                                                   mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size))\
                                                                                                                   (train_x_tr,train_y_tr,train_x_val,train_y_val,
                                                                                                                    umaskcoords_trtr,umaskcoords_trval,N_trtr,N_trval,mask_trtr,mask_trval,
                                                                                                                    conv_kern_all,conv_bias_all)
                                                                                                               
     else:       # Otherwise split the vmap. This avoids running out of GPU memory when we have many retinas and large batch size
-        (local_losses, local_y_preds, local_kerns, local_biases),local_grads_all = batched_metal_grads(maml_grads1step,
+        (local_losses, local_y_preds, local_kerns, local_biases),local_grads_all = batched_metal_grads(metalzero_grads1step,
         mdl_state, global_params,MAX_RGCS,cell_types_unique,segment_size, train_x_tr, train_y_tr, train_x_val, train_y_val,
         umaskcoords_trtr, umaskcoords_trval, N_trtr, N_trval, mask_trtr, mask_trval, conv_kern_all, conv_bias_all, 
         NUM_SPLITS=NUM_SPLITS)
@@ -619,8 +619,72 @@ def eval_step(state,batch_val,dinf_batch_val,n_batches=1e5):
                 count_batch+=1
             else:
                 break
-            
     return loss,y_pred,y,y_pred_units,y_units
+
+
+
+import torch
+
+def torch_to_jax(tensor):
+    """Convert a PyTorch tensor to a JAX array."""
+    return jnp.array(tensor.numpy()) if isinstance(tensor, torch.Tensor) else tensor
+
+# @jax.jit
+def process_single_batch(state, X_batch, y_batch, coords, segment_size, N_val, mask_val):
+    """JIT-compiled function to process a single batch."""
+    y_pred_batch = state.apply_fn({'params': state.params}, X_batch, training=True)
+
+    loss_batch, y_units_b, y_pred_units_b = calc_loss(
+        y_pred_batch, y_batch, coords, segment_size, N_val, mask_val
+    )
+    
+    y_units_b = y_units_b[:, :N_val]
+    y_pred_units_b = y_pred_units_b[:, :N_val]
+
+    return loss_batch, y_pred_batch, y_batch, y_pred_units_b, y_units_b
+
+def eval_step_dl(state, batch_val, dinf_batch_val, n_batches=1e5):
+    """Iterates over the PyTorch DataLoader and calls the JIT-compiled function."""
+    N_val = dinf_batch_val['N_val']
+    mask_val = dinf_batch_val['maskunits_val']
+    coords = dinf_batch_val['umaskcoords_val']
+    segment_size =  dinf_batch_val['segment_size']
+
+    y_pred_list = []
+    y_list = []
+    y_pred_units_list = []
+    y_units_list = []
+    loss_list = []
+
+    count_batch = 0
+
+    for batch in batch_val:
+        if count_batch < n_batches:
+            X_batch, y_batch = batch
+            X_batch, y_batch = torch_to_jax(X_batch), torch_to_jax(y_batch)  # Convert to JAX arrays
+
+            loss_batch, y_pred_batch, y_batch, y_pred_units_b, y_units_b = process_single_batch(
+                state, X_batch, y_batch, coords, segment_size, N_val, mask_val
+            )
+
+            loss_list.append(loss_batch)
+            y_pred_list.append(y_pred_batch)
+            y_list.append(y_batch)
+            y_pred_units_list.append(y_pred_units_b)
+            y_units_list.append(y_units_b)
+
+            count_batch += 1
+        else:
+            break
+
+    # Concatenate only once at the end
+    y_pred = jnp.concatenate(y_pred_list, axis=0) if y_pred_list else jnp.empty((0, *y_pred_list[0].shape[1:]))
+    y = jnp.concatenate(y_list, axis=0) if y_list else jnp.empty((0, *y_list[0].shape[1:]))
+    y_pred_units = jnp.concatenate(y_pred_units_list, axis=0) if y_pred_units_list else jnp.empty((0, N_val))
+    y_units = jnp.concatenate(y_units_list, axis=0) if y_units_list else jnp.empty((0, N_val))
+    loss = jnp.array(loss_list) if loss_list else jnp.empty((0,))
+
+    return loss, y_pred, y, y_pred_units, y_units
 
 
 def generate_activity_map(cells,activity,N_val,frame_size=(40, 80)):
@@ -798,7 +862,7 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
     for epoch in tqdm(range(step_start,nb_epochs)):
         _ = gc.collect()
         loss_batch_train=[]
-        # t = time.time()
+        t = time.time()
         t2=0
         # batch_train = next(iter(dataloader_train)); batch=batch_train; 
         t1_c=[]
@@ -806,16 +870,16 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
 
         for batch_train in dataloader_train:
             current_lr = lr_schedule(mdl_state.step)     
-            # t1 = time.time()-t;print('Dataloader time: %f',t1)
-            # t1_c.append(t1)
+            t1 = time.time()-t;print('Dataloader time: %f',t1)
+            t1_c.append(t1)
             
             # t=time.time()
             if APPROACH == 'metal':
                 loss,mdl_state,weights_output,grads = train_step_metal(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
-            elif APPROACH == 'maml':
-                loss,mdl_state,weights_output,grads = train_step_maml(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
-            elif APPROACH == 'maml1step':
-                loss,mdl_state,weights_output,grads = train_step_maml1step(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
+            elif APPROACH == 'metalzero':
+                loss,mdl_state,weights_output,grads = train_step_metalzero(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
+            elif APPROACH == 'metalzero1step':
+                loss,mdl_state,weights_output,grads = train_step_metalzero1step(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
 
             # else:
             #     print('Invalid APPROACH')
@@ -837,7 +901,7 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
         
         # For validation, update the new state with weights from the idx_valdset task
         mdl_state_val = mdl_state
-        if APPROACH != 'maml':
+        if APPROACH != 'metalzero':
             mdl_state_val.params['output']['kernel'] = weights_output[0][idx_valdset]
             mdl_state_val.params['output']['bias'] = weights_output[1][idx_valdset]
             
@@ -1122,7 +1186,7 @@ def ft_train(ft_mdl_state,ft_params_fixed,config,ft_data_train,ft_data_val,ft_da
 
 # %% Recycle
 # @jax.jit
-# def train_step_maml(mdl_state,batch,weights_output,lr,dinf_tr):        # Make unit vectors then scale by num of RGCs
+# def train_step_metalzero(mdl_state,batch,weights_output,lr,dinf_tr):        # Make unit vectors then scale by num of RGCs
 #     """
 #     State is the grand model state that actually gets updated
 #     state_task is the "state" after gradients are applied for a specific task
@@ -1142,7 +1206,7 @@ def ft_train(ft_mdl_state,ft_params_fixed,config,ft_data_train,ft_data_val,ft_da
 #         loss,mdl_state,weights_output,grads = train_step_metal(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
 #     """
 #     @jax.jit
-#     def maml_grads(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,train_x,train_y_tr,train_y_val,coords_tr,coords_val,N_tr,N_val,mask_tr,mask_val):
+#     def metalzero_grads(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,train_x,train_y_tr,train_y_val,coords_tr,coords_val,N_tr,N_val,mask_tr,mask_val):
 
 #         # Split the batch into inner and outer training sets
 #         # PARAMETERIZE this
@@ -1195,9 +1259,9 @@ def ft_train(ft_mdl_state,ft_params_fixed,config,ft_data_train,ft_data_val,ft_da
     
     
 #     @jax.jit
-#     def maml_loss(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,train_x,train_y_tr,train_y_val,umaskcoords_trtr,umaskcoords_trval,N_trtr,N_trval,mask_trtr,mask_trval):
+#     def metalzero_loss(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,train_x,train_y_tr,train_y_val,umaskcoords_trtr,umaskcoords_trval,N_trtr,N_trval,mask_trtr,mask_trval):
         
-#         local_losses,local_y_preds,local_mdl_states = jax.vmap(Partial(maml_grads,mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size))\
+#         local_losses,local_y_preds,local_mdl_states = jax.vmap(Partial(metalzero_grads,mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size))\
 #                                                                                                                   (train_x,train_y_tr,train_y_val,
 #                                                                                                                    umaskcoords_trtr,umaskcoords_trval,N_trtr,N_trval,mask_trtr,mask_trval)
 
@@ -1225,7 +1289,7 @@ def ft_train(ft_mdl_state,ft_params_fixed,config,ft_data_train,ft_data_val,ft_da
 
 #     # maxRGCs = mask_unitsToTake_all.shape[-1] #jnp.sum(mask_unitsToTake_all)
     
-#     grad_fn = jax.value_and_grad(maml_loss,argnums=1,has_aux=True)
+#     grad_fn = jax.value_and_grad(metalzero_loss,argnums=1,has_aux=True)
 #     (losses,rgb),grads = grad_fn(mdl_state,global_params,MAX_RGCS,cell_types_unique,segment_size,train_x,train_y_tr,train_y_val,umaskcoords_trtr,umaskcoords_trval,N_trtr,N_trval,mask_trtr,mask_trval)
 
     
