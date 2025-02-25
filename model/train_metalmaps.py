@@ -23,6 +23,8 @@ from flax.training.train_state import TrainState
 import time
 from model import models_jax
 import matplotlib.pyplot as plt
+import cloudpickle
+
 
 from model.performance import model_evaluate_new
 
@@ -323,11 +325,12 @@ def train_step_metalzero(mdl_state,batch,weights_output,lr,dinf_tr):        # Ma
     """
     State is the grand model state that actually gets updated
     state_task is the "state" after gradients are applied for a specific task
-        task_idx = 1
+        task_idx = 11
         conv_kern = conv_kern_all[task_idx]
         conv_bias = conv_bias_all[task_idx]
-        train_x = train_x[task_idx]
+        train_x_tr = train_x_tr[task_idx]
         train_y_tr = train_y_tr[task_idx]
+        train_x_val = train_x_val[task_idx]
         train_y_val = train_y_val[task_idx]
         coords_tr = umaskcoords_trtr[task_idx]
         coords_val = umaskcoords_trval[task_idx]
@@ -750,9 +753,14 @@ def save_epoch(state,config,weights_output,fname_cp,weights_all=None,aux=None):
             save_nested_dict_to_h5(f,weights_all)
     
     if aux!=None:
-        fname_aux = os.path.join(fname_cp,'batch_metrics.h5')
-        with h5py.File(fname_aux,'w') as f:
-            save_nested_dict_to_h5(f,aux)
+        fname_aux = os.path.join(fname_cp,'batch_metrics.pkl')
+        # with h5py.File(fname_aux,'w') as f:
+        #     save_nested_dict_to_h5(f,aux)
+            
+        with open(fname_aux, 'wb') as f:      
+            cloudpickle.dump(aux, f)
+
+
 
 
 
@@ -865,6 +873,7 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
         # batch_train = next(iter(dataloader_train)); batch=batch_train; 
         t1_c=[]
         t2_c=[]
+        grads_batches = []
 
         for batch_train in dataloader_train:
             current_lr = lr_schedule(mdl_state.step)     
@@ -884,6 +893,7 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
             #     break
         
             loss_batch_train.append(loss)
+            grads_batches.append(grads)
             # print(loss)
 
             # elap = time.time()-t
@@ -949,8 +959,8 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
         # plt.show()
         # plt.close()
 
-        aux = dict(loss_batch_train=np.array(loss_batch_train))
-        
+        aux = dict(loss_batch_train=np.array(loss_batch_train),grads_batches=grads_batches)
+        # t=time.time()
         if save == True:
             fname_cp = os.path.join(path_model_save,'epoch-%03d'%epoch)
             save_epoch(mdl_state,config,weights_output,fname_cp,aux=aux)
