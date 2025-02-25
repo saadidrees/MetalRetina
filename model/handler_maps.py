@@ -54,6 +54,7 @@ def bytestostring(arr):
 
 def normalize_responses(data,norm_val):
     y = data.y
+    norm_val = np.maximum(norm_val, 1e-6)
     y = y/norm_val[None,:]
     
     return Exptdata_spikes(data.X,y,data.spikes)
