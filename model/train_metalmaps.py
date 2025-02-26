@@ -905,7 +905,9 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
             
 
         assert jnp.sum(grads['Conv_0']['kernel']) != 0, 'Gradients are Zero'
-            
+        
+        print('Finished training on batch')
+        print('Gonna start ealuating the batch')
         
         # For validation, update the new state with weights from the idx_valdset task
         mdl_state_val = mdl_state
