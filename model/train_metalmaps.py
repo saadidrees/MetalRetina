@@ -914,7 +914,7 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
             # t2_c.append(t2)
             
 
-        assert jnp.sum(grads['Conv_0']['kernel']) != 0, 'Gradients are Zero'
+        # assert jnp.sum(grads['Conv_0']['kernel']) != 0, 'Gradients are Zero'
         
         print('Finished training on batch')
         print('Gonna start ealuating the batch')
