@@ -306,7 +306,7 @@ class RetinaDatasetTRVALMAPS(torch.utils.data.Dataset):
 
 
 class CombinedDatasetTRVALMAPS(torch.utils.data.Dataset):
-    def __init__(self,datasets,num_samples=256):
+    def __init__(self,datasets,num_samples=256,DTYPE='float32'):
         """
         dataset = (n_retinas)(n_samples)(X,y)[data]
         """
@@ -320,6 +320,7 @@ class CombinedDatasetTRVALMAPS(torch.utils.data.Dataset):
         # print(self.datasets[0][0][1].shape)     # [retinas][batches][X_tr,y_tr,X_val,y_val][X,y]
         self.shape_x = self.datasets[0][0][0].shape 
         self.shape_y = self.datasets[0][0][1].shape 
+        self.DTYPE=DTYPE
 
 
         
@@ -334,10 +335,10 @@ class CombinedDatasetTRVALMAPS(torch.utils.data.Dataset):
         # Assuming shapes are known, replace these with actual shapes
         n_datasets = len(self.datasets)
         # Replace shape_x and shape_y with actual shapes of your data
-        combined_X_trtr = np.empty((n_datasets, self.num_samples, *self.shape_x))
-        combined_y_trtr = np.empty((n_datasets, self.num_samples, *self.shape_y))
-        combined_X_trval = np.empty((n_datasets, self.num_samples, *self.shape_x))
-        combined_y_trval = np.empty((n_datasets, self.num_samples, *self.shape_y))
+        combined_X_trtr = np.empty((n_datasets, self.num_samples, *self.shape_x),dtype=self.DTYPE)
+        combined_y_trtr = np.empty((n_datasets, self.num_samples, *self.shape_y),dtype=self.DTYPE)
+        combined_X_trval = np.empty((n_datasets, self.num_samples, *self.shape_x),dtype=self.DTYPE)
+        combined_y_trval = np.empty((n_datasets, self.num_samples, *self.shape_y),dtype=self.DTYPE)
         
         # Process all datasets at once using vectorized operations
         for i, dataset in enumerate(self.datasets):
@@ -352,10 +353,10 @@ class CombinedDatasetTRVALMAPS(torch.utils.data.Dataset):
         
         # Single conversion to jax arrays at the end
         return (
-            jnp.asarray(combined_X_trtr),
-            jnp.asarray(combined_y_trtr),
-            jnp.asarray(combined_X_trval),
-            jnp.asarray(combined_y_trval)
+            jnp.asarray(combined_X_trtr,dtype=self.DTYPE),
+            jnp.asarray(combined_y_trtr,dtype=self.DTYPE),
+            jnp.asarray(combined_X_trval,dtype=self.DTYPE),
+            jnp.asarray(combined_y_trval,dtype=self.DTYPE)
         )
 
 def jnp_collate_MAMLMAPS(batch):
