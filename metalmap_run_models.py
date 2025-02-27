@@ -59,13 +59,17 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     from model import train_metalmaps
     from torch.utils.data import DataLoader
     
-    from jax import config
-    config.update("jax_default_dtype_bits", 16)  # Forces `bfloat16` globally
+    # from jax import config
+    # config.update("jax_default_dtype_bits", 16)  # Forces `bfloat16` globally
+    
+    DTYPE='float32'
 
     Exptdata = namedtuple('Exptdata', ['X', 'y'])
     Exptdata_spikes = namedtuple('Exptdata', ['X', 'y','spikes'])
     
     # %
+    # os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "1.0"
+    # os.environ['xla_gpu_strict_conv_algorithm_picker']='false'
     devices = jax.devices()
     for device in devices:
         if device.device_kind == 'Gpu':
@@ -208,6 +212,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         data_trtr,data_trval = handler_maps.prepare_metaldataset(data_train,dinf['umaskcoords_trtr'],dinf['umaskcoords_trval'],bgr=0,frac_stim_train=0.5,BUILD_MAPS=BUILD_MAPS)
 
         del data_train, data_test
+        
         
         # dict_train[fname_data_train_val_test_all[d]] = data_train
         dict_trtr[fname_data_train_val_test_all[d]] = data_trtr
@@ -384,7 +389,15 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     for d in range(len(fname_data_train_val_test_all)):
         dset = fname_data_train_val_test_all[d]
        
-        rgb = dataloaders.RetinaDatasetTRVALMAPS(dict_trtr[dset].X,dict_trtr[dset].y,dict_trval[dset].X,dict_trval[dset].y,transform=None)
+        # data_trtr = handler_maps.change_dtype(dict_trtr[dset],'float16')
+        # data_trval = handler_maps.change_dtype(dict_trval[dset],'float16')
+        
+        data_trtr = dict_trtr[dset]
+        data_trval = dict_trval[dset]
+        # data_val = handler_maps.change_dtype(dict_val,'float16')
+
+
+        rgb = dataloaders.RetinaDatasetTRVALMAPS(data_trtr.X,data_trtr.y,data_trval.X,data_trval.y,transform=None)
         Retinadatasets_train.append(rgb)
        
         # rgb = dataloaders.RetinaDatasetmetalzero(dict_val[dset].X,dict_val[dset].y,transform=None)
@@ -397,7 +410,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     
     
     # %
-    combined_dataset = dataloaders.CombinedDatasetTRVALMAPS(Retinadatasets_train,num_samples=batch_size_train)
+    combined_dataset = dataloaders.CombinedDatasetTRVALMAPS(Retinadatasets_train,num_samples=batch_size_train,DTYPE=DTYPE)
     dataloader_train = DataLoader(combined_dataset,batch_size=1,collate_fn=dataloaders.jnp_collate_MAMLMAPS,shuffle=False)
     # batch = next(iter(dataloader_train));a,b,c,d=batch
     
@@ -408,12 +421,14 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
 
     idx_valdset = 0
     dset = fname_data_train_val_test_all[idx_valdset]   
-    RetinaDataset_val = dataloaders.RetinaDataset(dict_val[dset].X,dict_val[dset].y,transform=None)
+    # data_val = handler_maps.change_dtype(dict_val[dset],'float16')
+    
+    RetinaDataset_val = dataloaders.RetinaDataset(data_val.X,dict_val[dset].y,transform=None)
     dataloader_val = DataLoader(RetinaDataset_val,batch_size=512,collate_fn=dataloaders.jnp_collate);
     # batch = next(iter(dataloader_val));a,b=batch
 
 
-    # %%
+    # %
     maxLen_umaskcoords_tr_subtr = max([len(value['umaskcoords_trtr_remap']) for value in dict_dinf.values()])
     maxLen_umaskcoords_tr_subval = max([len(value['umaskcoords_trval_remap']) for value in dict_dinf.values()])
     maxLen_umaskcoords_val = max([len(value['umaskcoords_val']) for value in dict_dinf.values()])

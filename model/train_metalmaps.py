@@ -894,8 +894,10 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
             elif APPROACH == 'metalzero1step':
                 loss,mdl_state,weights_output,grads = train_step_metalzero1step(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
                 
-            print('Batch: %d of %d'%(ctr_batch,len(dataloader_train)))
+            # t1 = time.time()-t;print('Training time: %f',t1)
+            # t1_c.append(t1)
 
+            # print('Batch: %d of %d'%(ctr_batch,len(dataloader_train)))
             # else:
             #     print('Invalid APPROACH')
             #     break
@@ -903,7 +905,9 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
             loss_batch_train.append(loss)
             grads_cpu = to_cpu(grads)
             del grads
-            grads_batches.append(grads_cpu)
+            if ctr_batch==1000:
+                ctr_batch=0
+                grads_batches.append(grads_cpu)
             # print(loss)
 
             # elap = time.time()-t
@@ -912,7 +916,7 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
 
             # t2 = time.time()-t1-t;print('training step: %f',t2)
             # t2_c.append(t2)
-            
+            gc.collect()
 
         # assert jnp.sum(grads['Conv_0']['kernel']) != 0, 'Gradients are Zero'
         

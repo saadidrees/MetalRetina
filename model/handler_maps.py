@@ -16,6 +16,14 @@ from model.data_handler import isintuple
 Exptdata = namedtuple('Exptdata', ['X', 'y'])
 Exptdata_spikes = namedtuple('Exptdata', ['X', 'y','spikes'])
 
+def change_dtype(data,dtype='float32'):
+    X=data.X
+    X = [arr.astype(dtype) for arr in X]
+    
+    y=data.y
+    y=[arr.astype(dtype) for arr in y]
+    return Exptdata(X,y)
+
 def get_unit_types(unames):
     pattern = re.compile(r'type(\d+)')
     cell_types = np.array([pattern.match(entry).group(1) for entry in unames]).astype('int')
@@ -36,7 +44,6 @@ def remove_boundary_units(dinf,data_train,data_val):
         n_discard = len(unit_locs)-len(idx_keep)
         print('Discarded %d boundary units'%n_discard)
         
-    
         dinf['unit_locs'] = dinf['unit_locs'][idx_keep]
         dinf['unit_types'] = dinf['unit_types'][idx_keep]
         dinf['unames'] = dinf['unames'][idx_keep]
