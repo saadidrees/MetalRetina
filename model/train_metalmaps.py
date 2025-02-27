@@ -159,12 +159,12 @@ def calc_loss(y_pred,y,coords,segment_size,N_tr,mask_tr):
     else:
         y_units=y
     
-    y_pred_units = jnp.maximum(y_pred_units, 1e-6)
+    y_pred_units = jnp.where(y_pred_units == 0, 1e-6, y_pred_units)
 
     # y_pred_units = jnp.where(y_pred_units == 0, 1e-6, y_pred_units)
     loss = y_pred_units-y_units*jax.lax.log(y_pred_units)
-    loss = jnp.nansum((loss*mask_tr[None,:])/N_tr)
-    # loss=jnp.nansum(loss)
+    loss = (loss*mask_tr[None,:])/N_tr
+    loss=jnp.nansum(loss)
     
     return loss,y_units,y_pred_units
 
@@ -347,7 +347,7 @@ def train_step_metalzero(mdl_state,batch,weights_output,lr,dinf_tr):        # Ma
        
         batch_train = (train_x_tr,train_y_tr)
         batch_val = (train_x_val,train_y_val)
-        local_mdl_state = mdl_state.replace(params=global_params)
+        local_mdl_state = mdl_state #.replace(params=global_params)
 
         # Calculate gradients of the local model wrt to local params    
         grad_fn = jax.value_and_grad(task_loss,argnums=1,has_aux=True)
