@@ -44,6 +44,10 @@ import re
 MAX_RGCS = 500
 
 
+def to_cpu(grads):
+    return jax.tree_map(lambda g: np.asarray(g),grads)
+
+
 def append_dicts(dict1, dict2):
     result = {}
     for key in dict1:
@@ -874,8 +878,10 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
         t1_c=[]
         t2_c=[]
         grads_batches = []
+        ctr_batch=0
 
         for batch_train in dataloader_train:
+            ctr_batch = ctr_batch+1
             current_lr = lr_schedule(mdl_state.step)     
             # t1 = time.time()-t;print('Dataloader time: %f',t1)
             # t1_c.append(t1)
@@ -887,13 +893,17 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
                 loss,mdl_state,weights_output,grads = train_step_metalzero(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
             elif APPROACH == 'metalzero1step':
                 loss,mdl_state,weights_output,grads = train_step_metalzero1step(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
+                
+            print('Batch: %d of %d'%(ctr_batch,len(dataloader_train)))
 
             # else:
             #     print('Invalid APPROACH')
             #     break
         
             loss_batch_train.append(loss)
-            grads_batches.append(grads)
+            grads_cpu = to_cpu(grads)
+            del grads
+            grads_batches.append(grads_cpu)
             # print(loss)
 
             # elap = time.time()-t

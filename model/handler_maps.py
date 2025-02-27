@@ -9,7 +9,6 @@ Created on Mon Jan 27 12:04:06 2025
 
 import numpy as np
 import jax
-import jax.numpy as jnp
 import re
 from collections import namedtuple
 from model import utils_si
@@ -483,7 +482,7 @@ def mapToUnitsEval(pred_frmap,unit_locs,unit_types,umaskcoords,method='avg'):
     spatial_x = umaskcoords[:,2] 
     type_idx = umaskcoords[:,1] - 1 
     u_id = umaskcoords[:,0]
-    N_units = len(jnp.unique(u_id))
+    N_units = len(np.unique(u_id))
     
     y_pred_allpixs = pred_frmap[:,spatial_y,spatial_x,type_idx].T
     # y_pred_units = np.nanmean(y_pred_allpixs,axis=-1) 
@@ -557,7 +556,7 @@ def get_maskunitloc(unitlocs_train,unittypes_train,cell_types_unique,frame_shape
     return maskunitloc
     
 def remap_unit_ids(coords):
-    unique_ids, new_ids = jnp.unique(coords[:, 0], return_inverse=True)
+    unique_ids, new_ids = np.unique(coords[:, 0], return_inverse=True)
     remapped_coords = coords.copy()
     remapped_coords[:,0] = new_ids
     return remapped_coords

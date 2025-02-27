@@ -58,6 +58,9 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     from model import models_jax, train_singleretunits, dataloaders,handler_maps
     from model import train_metalmaps
     from torch.utils.data import DataLoader
+    
+    from jax import config
+    config.update("jax_default_dtype_bits", 16)  # Forces `bfloat16` globally
 
     Exptdata = namedtuple('Exptdata', ['X', 'y'])
     Exptdata_spikes = namedtuple('Exptdata', ['X', 'y','spikes'])
@@ -699,11 +702,10 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     t_elapsed = time.time()-t
     print('time elapsed: '+str(t_elapsed)+' seconds')
 
-
     # %% Model Evaluation
     
     # Select the testing dataset
-    d=2
+    d=11
 
     for d in np.arange(0,len(fname_data_train_val_test_all)):   
         idx_dset = d
