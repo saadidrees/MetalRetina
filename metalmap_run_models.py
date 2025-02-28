@@ -63,6 +63,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     # config.update("jax_default_dtype_bits", 16)  # Forces `bfloat16` globally
     
     DTYPE='float32'
+    LOSS_FUN='poisson'
 
     Exptdata = namedtuple('Exptdata', ['X', 'y'])
     Exptdata_spikes = namedtuple('Exptdata', ['X', 'y','spikes'])
@@ -151,7 +152,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     else:
         fname_data_train_val_test_all = fname_data_train_val_test.split('+')
     
-    path_model_save_base = os.path.join(path_model_save_base,APPROACH,trainList)
+    path_model_save_base = os.path.join(path_model_save_base,APPROACH,trainList,LOSS_FUN)
     
     # Get the total num of samples and RGCs in each dataset
     nsamps_alldsets = []
