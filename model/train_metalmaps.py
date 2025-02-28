@@ -757,13 +757,40 @@ def save_epoch(state,config,weights_output,fname_cp,weights_all=None,aux=None):
             save_nested_dict_to_h5(f,weights_all)
     
     if aux!=None:
-        fname_aux = os.path.join(fname_cp,'batch_metrics.pkl')
+        fname_aux = os.path.join(fname_cp,'batch_losses.pkl')
         # with h5py.File(fname_aux,'w') as f:
         #     save_nested_dict_to_h5(f,aux)
             
         with open(fname_aux, 'wb') as f:      
             cloudpickle.dump(aux, f)
+            
+        # fname_aux = os.path.join(fname_cp,'batch_gradients.h5')
+        # save_gradients_as_h5(aux['grads_batches'], fname_aux)
 
+
+def save_gradients_as_h5(gradients, fname_aux):
+    if os.path.exists(fname_aux):
+        os.remove(fname_aux) 
+    with h5py.File(fname_aux, 'w') as f:
+        for i, grad_entry in enumerate(gradients):
+            # Creating a group for each gradient entry (if you want to separate them)
+            grad_group = f.create_group(f"batch_{i}")
+            
+            # Now iterate over the gradient dictionary
+            for layer_name, _ in grad_entry.items():
+                try:
+                    # print(layer_name)
+                    # Create a dataset for each layer's gradient (with compression)
+                    layer_group = grad_group.create_group(layer_name)
+                    for key,val in grad_entry[layer_name].items():
+                        layer_group.create_dataset(
+                            key, 
+                            data=val, 
+                            compression="gzip",  # you can change the compression type if needed
+                            compression_opts=9  # compression level (1-9)
+                        )
+                except:
+                    pass
 
 
 
@@ -867,7 +894,7 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
                             segment_size=dinf_tr['segment_size'])
 
 
-    
+    print('Total batches: %d'%len(dataloader_train))
     epoch=0
     for epoch in tqdm(range(step_start,nb_epochs)):
         _ = gc.collect()
@@ -905,7 +932,7 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
             loss_batch_train.append(loss)
             grads_cpu = to_cpu(grads)
             del grads
-            if ctr_batch==1000:
+            if ctr_batch==0 or ctr_batch==2000:
                 ctr_batch=0
                 grads_batches.append(grads_cpu)
             # print(loss)
