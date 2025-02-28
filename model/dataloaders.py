@@ -373,7 +373,7 @@ class RetinaDatasetTRVALMAPS(torch.utils.data.Dataset):
 # import matplotlib.pyplot as plt
 
 class CombinedDatasetTRVALMAPS(torch.utils.data.Dataset):
-    def __init__(self, datasets, num_samples=256, num_workers=4, cache_size=256):
+    def __init__(self, datasets, num_samples=256, num_workers=1, cache_size=256):
         """
         Args:
             datasets: List of datasets, each containing (X_tr, y_tr, X_val, y_val) tuples
