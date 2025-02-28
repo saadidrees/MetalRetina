@@ -931,7 +931,7 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
                 
             # gc.collect()
             t_other = time.time()-t_other
-            print('Epoch %d, Batch %d of %d | DL: %0.2f s, TR: %0.2f s, Other: %0.2f s'%(epoch,ctr_batch_master,len(dataloader_train),t_dl,t_tr,t_other))
+            print('Epoch %d, Batch %d of %d | Loss: 0.3%f | DL: %0.2f s, TR: %0.2f s, Other: %0.2f s'%(epoch,ctr_batch_master,len(dataloader_train),loss,t_dl,t_tr,t_other))
             t_dl = time.time()
             
 
