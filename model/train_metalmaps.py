@@ -988,13 +988,13 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
         # plt.close()
 
         aux = dict(loss_batch_train=np.array(loss_batch_train),grads_batches=grads_batches)
-        # t=time.time()
+        t=time.time()
         if save == True:
             fname_cp = os.path.join(path_model_save,'epoch-%03d'%epoch)
             save_epoch(mdl_state,config,weights_output,fname_cp,aux=aux)
             
-        # elap = time.time()-t
-        # print('Rest of time: %f',elap)
+        elap = time.time()-t
+        print('File saving time: %f mins',elap/60)
             
     return loss_currEpoch_master,loss_epoch_train,loss_epoch_val,mdl_state,weights_output,fev_epoch_train,fev_epoch_val
 
