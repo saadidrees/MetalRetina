@@ -906,9 +906,11 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
         t2_c=[]
         grads_batches = []
         ctr_batch=0
-
+        ctr_batch_master = 0
         for batch_train in dataloader_train:
             ctr_batch = ctr_batch+1
+            ctr_batch_master=ctr_batch_master+1
+            
             current_lr = lr_schedule(mdl_state.step)     
             # t1 = time.time()-t;print('Dataloader time: %f',t1)
             # t1_c.append(t1)
@@ -932,7 +934,7 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
             loss_batch_train.append(loss)
             grads_cpu = to_cpu(grads)
             del grads
-            if ctr_batch==0 or ctr_batch==2000:
+            if ctr_batch_master==0 or ctr_batch==2000:
                 ctr_batch=0
                 grads_batches.append(grads_cpu)
             # print(loss)
