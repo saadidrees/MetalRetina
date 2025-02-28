@@ -906,7 +906,7 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
         t2_c=[]
         grads_batches = []
         ctr_batch=-1
-        ctr_batch_master = 0
+        ctr_batch_master = -1
         for batch_train in dataloader_train:
             ctr_batch = ctr_batch+1
             ctr_batch_master=ctr_batch_master+1
