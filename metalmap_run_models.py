@@ -410,7 +410,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     
     
     # %
-    combined_dataset = dataloaders.CombinedDatasetTRVALMAPS(Retinadatasets_train,num_samples=batch_size_train,DTYPE=DTYPE)
+    combined_dataset = dataloaders.CombinedDatasetTRVALMAPS(Retinadatasets_train,num_samples=batch_size_train)
     dataloader_train = DataLoader(combined_dataset,batch_size=1,collate_fn=dataloaders.jnp_collate_MAMLMAPS,shuffle=False)
     # batch = next(iter(dataloader_train));a,b,c,d=batch
     
