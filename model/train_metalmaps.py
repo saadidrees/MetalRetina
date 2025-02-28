@@ -899,23 +899,19 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
     for epoch in tqdm(range(step_start,nb_epochs)):
         _ = gc.collect()
         loss_batch_train=[]
-        t = time.time()
-        t2=0
         # batch_train = next(iter(dataloader_train)); batch=batch_train; 
-        t1_c=[]
-        t2_c=[]
         grads_batches = []
         ctr_batch=-1
         ctr_batch_master = -1
+        t_dl = time.time()
         for batch_train in dataloader_train:
+            t_dl = time.time()-t_dl
             ctr_batch = ctr_batch+1
             ctr_batch_master=ctr_batch_master+1
             
             current_lr = lr_schedule(mdl_state.step)     
-            # t1 = time.time()-t;print('Dataloader time: %f',t1)
-            # t1_c.append(t1)
             
-            # t=time.time()
+            t_tr=time.time()
             if APPROACH == 'metal':
                 loss,mdl_state,weights_output,grads = train_step_metal(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
             elif APPROACH == 'metalzero':
@@ -923,29 +919,21 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
             elif APPROACH == 'metalzero1step':
                 loss,mdl_state,weights_output,grads = train_step_metalzero1step(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
                 
-            # t1 = time.time()-t;print('Training time: %f',t1)
-            # t1_c.append(t1)
-
-            # print('Batch: %d of %d'%(ctr_batch,len(dataloader_train)))
-            # else:
-            #     print('Invalid APPROACH')
-            #     break
-        
+            t_tr = time.time()-t_tr
+            t_other = time.time()
             loss_batch_train.append(loss)
-            grads_cpu = to_cpu(grads)
-            del grads
             if ctr_batch_master==0 or ctr_batch==2000:
                 ctr_batch=0
+                grads_cpu = to_cpu(grads)
                 grads_batches.append(grads_cpu)
-            # print(loss)
-
-            # elap = time.time()-t
-            # t1_c.append(elap)
-            # print('Train time: %f',elap)
-
-            # t2 = time.time()-t1-t;print('training step: %f',t2)
-            # t2_c.append(t2)
+            else:
+                del grads
+                
             gc.collect()
+            t_other = time.time()-t_other
+            print('Epoch %d, Batch %d of %d | DL: %0.2f mins, TR: %0.2f, Other: %0.2f'%(epoch,ctr_batch_master,len(dataloader_train),t_dl/60,t_tr/60,t_other/60))
+            t_dl = time.time()
+            
 
         # assert jnp.sum(grads['Conv_0']['kernel']) != 0, 'Gradients are Zero'
         
@@ -961,14 +949,9 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
     
         loss_batch_val = []
         # batch = next(iter(dataloader_val))
-        y_val_units = np.zeros((0,dinf_batch_val['N_val']))
-        y_pred_val_units = np.zeros((0,dinf_batch_val['N_val']))
         # t = time.time()
-        for batch_val in dataloader_val:
-            loss,y_pred,y,y_pred_units,y_units = eval_step(mdl_state_val,batch_val,dinf_batch_val)
-            y_val_units = np.concatenate((y_val_units,y_units),axis=0)
-            y_pred_val_units = np.concatenate((y_pred_val_units,y_pred_units),axis=0)
-            loss_batch_val.append(loss)
+        # for batch_val in dataloader_val:
+        loss_batch_val,y_pred,y,y_pred_val_units,y_val_units = eval_step(mdl_state_val,dataloader_val,dinf_batch_val)
         
         # elap = time.time()-t
         # print('Val time: %f',elap)
@@ -985,8 +968,8 @@ def train(mdl_state,weights_output,config,dataloader_train,dataloader_val,dinf_t
         
         current_lr = lr_schedule(mdl_state.step)
         
-        temporal_width_eval = batch_val[0].shape[1]
-        fev_val,_,predCorr_val,_ = model_evaluate_new(y_units,y_pred_units,temporal_width_eval,lag=0,obs_noise=0)
+        temporal_width_eval = batch_train[0].shape[1]
+        fev_val,_,predCorr_val,_ = model_evaluate_new(y_val_units,y_pred_val_units,temporal_width_eval,lag=0,obs_noise=0)
         fev_val_med,predCorr_val_med = np.median(fev_val),np.median(predCorr_val)
         fev_train,_,predCorr_train,_ = model_evaluate_new(y_train_units,y_pred_train_units,temporal_width_eval,lag=0,obs_noise=0)
         fev_train_med,predCorr_train_med = np.median(fev_train),np.median(predCorr_train)
