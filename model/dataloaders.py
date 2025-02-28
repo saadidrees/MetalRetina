@@ -306,204 +306,204 @@ class RetinaDatasetTRVALMAPS(torch.utils.data.Dataset):
 
 # %% Original
 
-class CombinedDatasetTRVALMAPS(torch.utils.data.Dataset):
-    def __init__(self,datasets,num_samples=256,DTYPE='float32'):
-        """
-        dataset = (n_retinas)(n_samples)(X,y)[data]
-        """
-        self.num_samples = num_samples
-        self.datasets = datasets
-
-        self.total_samples = min(len(dataset) for dataset in datasets)
-        # print(len(self.datasets))
-        # print(len(self.datasets[0]))
-        # print(len(self.datasets[0][0]))
-        # print(self.datasets[0][0][1].shape)     # [retinas][batches][X_tr,y_tr,X_val,y_val][X,y]
-        self.shape_x = self.datasets[0][0][0].shape 
-        self.shape_y = self.datasets[0][0][1].shape 
-        self.DTYPE=DTYPE
-
-
-        
-    def __len__(self):
-        return self.total_samples // self.num_samples
-    
-    def __getitem__(self, index):
-        start_idx = index * self.num_samples
-        end_idx = start_idx + self.num_samples
-        
-        # Pre-allocate arrays with known shapes
-        # Assuming shapes are known, replace these with actual shapes
-        n_datasets = len(self.datasets)
-        # Replace shape_x and shape_y with actual shapes of your data
-        combined_X_trtr = np.empty((n_datasets, self.num_samples, *self.shape_x),dtype=self.DTYPE)
-        combined_y_trtr = np.empty((n_datasets, self.num_samples, *self.shape_y),dtype=self.DTYPE)
-        combined_X_trval = np.empty((n_datasets, self.num_samples, *self.shape_x),dtype=self.DTYPE)
-        combined_y_trval = np.empty((n_datasets, self.num_samples, *self.shape_y),dtype=self.DTYPE)
-        
-        # Process all datasets at once using vectorized operations
-        for i, dataset in enumerate(self.datasets):
-            batch = dataset[start_idx:end_idx]
-            X_trtr_batch, y_trtr_batch, X_trval_batch, y_trval_batch = zip(batch)
-            
-            # Direct numpy array conversion and assignment
-            combined_X_trtr[i] = np.asarray(X_trtr_batch)
-            combined_y_trtr[i] = np.asarray(y_trtr_batch)
-            combined_X_trval[i] = np.asarray(X_trval_batch)
-            combined_y_trval[i] = np.asarray(y_trval_batch)
-        
-        # Single conversion to jax arrays at the end
-        return (
-            jnp.asarray(combined_X_trtr,dtype=self.DTYPE),
-            jnp.asarray(combined_y_trtr,dtype=self.DTYPE),
-            jnp.asarray(combined_X_trval,dtype=self.DTYPE),
-            jnp.asarray(combined_y_trval,dtype=self.DTYPE)
-        )
-
-def jnp_collate_MAMLMAPS(batch):
-    if isinstance(batch[0], jnp.ndarray):
-        return batch
-    elif isinstance(batch[0], (tuple, list)):
-        return type(batch[0])(jnp_collate_MAML(samples[0]) for samples in zip(*batch))
-    else:
-        return jnp.asarray(batch)
-
-# %% Faster but memory issues
-
-# import matplotlib.pyplot as plt
-
 # class CombinedDatasetTRVALMAPS(torch.utils.data.Dataset):
-#     def __init__(self, datasets, num_samples=256, num_workers=6, cache_size=256):
+#     def __init__(self,datasets,num_samples=256,DTYPE='float32'):
 #         """
-#         Args:
-#             datasets: List of datasets, each containing (X_tr, y_tr, X_val, y_val) tuples
-#             num_samples: Number of samples per batch
-#             num_workers: Number of parallel workers
-#             cache_size: Size of the LRU cache
+#         dataset = (n_retinas)(n_samples)(X,y)[data]
 #         """
-#         self.datasets = datasets
 #         self.num_samples = num_samples
+#         self.datasets = datasets
+
 #         self.total_samples = min(len(dataset) for dataset in datasets)
-#         self.shape_x = self.datasets[0][0][0].shape
-#         self.shape_y = self.datasets[0][0][1].shape
+#         # print(len(self.datasets))
+#         # print(len(self.datasets[0]))
+#         # print(len(self.datasets[0][0]))
+#         # print(self.datasets[0][0][1].shape)     # [retinas][batches][X_tr,y_tr,X_val,y_val][X,y]
+#         self.shape_x = self.datasets[0][0][0].shape 
+#         self.shape_y = self.datasets[0][0][1].shape 
+#         self.DTYPE=DTYPE
+
+
         
-#         # Initialize parallel processing
-#         self.num_workers = num_workers
-#         self.thread_local = threading.local()
-#         self.executor = ThreadPoolExecutor(max_workers=num_workers)
-        
-#         # Initialize cache
-#         self._process_batch = lru_cache(maxsize=cache_size)(self._process_batch)
-    
 #     def __len__(self):
 #         return self.total_samples // self.num_samples
-    
-#     def _init_thread_local_storage(self):
-#         """Initialize thread-local storage for pre-allocated arrays"""
-#         if not hasattr(self.thread_local, 'arrays'):
-#             n_datasets = len(self.datasets)
-#             self.thread_local.arrays = {
-#                 'X_trtr': np.zeros((n_datasets, self.num_samples, *self.shape_x), dtype=np.float32),
-#                 'y_trtr': np.zeros((n_datasets, self.num_samples, *self.shape_y), dtype=np.float32),
-#                 'X_trval': np.zeros((n_datasets, self.num_samples, *self.shape_x), dtype=np.float32),
-#                 'y_trval': np.zeros((n_datasets, self.num_samples, *self.shape_y), dtype=np.float32)
-#             }
-    
-#     def _process_batch(self, dataset_idx, start_idx, end_idx):
-#         """Process and cache a single dataset batch"""
-#         dataset = self.datasets[dataset_idx]
-#         batch = dataset[start_idx:end_idx]
-#         X_trtr_batch, y_trtr_batch, X_trval_batch, y_trval_batch = zip(batch)
-#         # print(len(X_trtr_batch))
-#         # print(y_trtr_batch[-1][-1].shape)
-#         # plt.plot(y_trtr_batch[-1][-1])
-        
-#         return (
-#             np.asarray(X_trtr_batch, dtype=np.float32)[0],
-#             np.asarray(y_trtr_batch, dtype=np.float32)[0],
-#             np.asarray(X_trval_batch, dtype=np.float32)[0],
-#             np.asarray(y_trval_batch, dtype=np.float32)[0]
-#         )
-    
-#     def _process_dataset(self, args):
-#         """Process a single dataset in parallel"""
-#         self._init_thread_local_storage()
-        
-#         i, start_idx, end_idx = args
-#         arrays = self.thread_local.arrays
-        
-#         X_trtr_batch, y_trtr_batch, X_trval_batch, y_trval_batch = self._process_batch(i, start_idx, end_idx)
-
-#         return (X_trtr_batch, y_trtr_batch, X_trval_batch, y_trval_batch)
     
 #     def __getitem__(self, index):
 #         start_idx = index * self.num_samples
 #         end_idx = start_idx + self.num_samples
         
-#         # Create tasks for parallel processing
-#         self._init_thread_local_storage()
-
-#         tasks = [(i, start_idx, end_idx) for i in range(len(self.datasets))]
+#         # Pre-allocate arrays with known shapes
+#         # Assuming shapes are known, replace these with actual shapes
+#         n_datasets = len(self.datasets)
+#         # Replace shape_x and shape_y with actual shapes of your data
+#         combined_X_trtr = np.empty((n_datasets, self.num_samples, *self.shape_x),dtype=self.DTYPE)
+#         combined_y_trtr = np.empty((n_datasets, self.num_samples, *self.shape_y),dtype=self.DTYPE)
+#         combined_X_trval = np.empty((n_datasets, self.num_samples, *self.shape_x),dtype=self.DTYPE)
+#         combined_y_trval = np.empty((n_datasets, self.num_samples, *self.shape_y),dtype=self.DTYPE)
         
-
-#         results=list(self.executor.map(self._process_dataset, tasks))
-#         X_trtr = np.stack([result[0] for result in results], axis=0)
-#         y_trtr = np.stack([result[1] for result in results], axis=0)
-#         X_trval = np.stack([result[2] for result in results], axis=0)
-#         y_trval = np.stack([result[3] for result in results], axis=0)
-
+#         # Process all datasets at once using vectorized operations
+#         for i, dataset in enumerate(self.datasets):
+#             batch = dataset[start_idx:end_idx]
+#             X_trtr_batch, y_trtr_batch, X_trval_batch, y_trval_batch = zip(batch)
+            
+#             # Direct numpy array conversion and assignment
+#             combined_X_trtr[i] = np.asarray(X_trtr_batch)
+#             combined_y_trtr[i] = np.asarray(y_trtr_batch)
+#             combined_X_trval[i] = np.asarray(X_trval_batch)
+#             combined_y_trval[i] = np.asarray(y_trval_batch)
+        
+#         # Single conversion to jax arrays at the end
 #         return (
-#             jnp.asarray(X_trtr),
-#             jnp.asarray(y_trtr),
-#             jnp.asarray(X_trval),
-#             jnp.asarray(y_trval)
+#             jnp.asarray(combined_X_trtr,dtype=self.DTYPE),
+#             jnp.asarray(combined_y_trtr,dtype=self.DTYPE),
+#             jnp.asarray(combined_X_trval,dtype=self.DTYPE),
+#             jnp.asarray(combined_y_trval,dtype=self.DTYPE)
 #         )
 
+# def jnp_collate_MAMLMAPS(batch):
+#     if isinstance(batch[0], jnp.ndarray):
+#         return batch
+#     elif isinstance(batch[0], (tuple, list)):
+#         return type(batch[0])(jnp_collate_MAML(samples[0]) for samples in zip(*batch))
+#     else:
+#         return jnp.asarray(batch)
+
+# %% Faster but memory issues
+
+# import matplotlib.pyplot as plt
+
+class CombinedDatasetTRVALMAPS(torch.utils.data.Dataset):
+    def __init__(self, datasets, num_samples=256, num_workers=1, cache_size=256):
+        """
+        Args:
+            datasets: List of datasets, each containing (X_tr, y_tr, X_val, y_val) tuples
+            num_samples: Number of samples per batch
+            num_workers: Number of parallel workers
+            cache_size: Size of the LRU cache
+        """
+        self.datasets = datasets
+        self.num_samples = num_samples
+        self.total_samples = min(len(dataset) for dataset in datasets)
+        self.shape_x = self.datasets[0][0][0].shape
+        self.shape_y = self.datasets[0][0][1].shape
+        
+        # Initialize parallel processing
+        self.num_workers = num_workers
+        self.thread_local = threading.local()
+        self.executor = ThreadPoolExecutor(max_workers=num_workers)
+        
+        # Initialize cache
+        self._process_batch = lru_cache(maxsize=cache_size)(self._process_batch)
     
-#     def __del__(self):
-#         """Cleanup executor on deletion"""
-#         if hasattr(self, 'executor'):
-#             self.executor.shutdown()
+    def __len__(self):
+        return self.total_samples // self.num_samples
+    
+    def _init_thread_local_storage(self):
+        """Initialize thread-local storage for pre-allocated arrays"""
+        if not hasattr(self.thread_local, 'arrays'):
+            n_datasets = len(self.datasets)
+            self.thread_local.arrays = {
+                'X_trtr': np.zeros((n_datasets, self.num_samples, *self.shape_x), dtype=np.float32),
+                'y_trtr': np.zeros((n_datasets, self.num_samples, *self.shape_y), dtype=np.float32),
+                'X_trval': np.zeros((n_datasets, self.num_samples, *self.shape_x), dtype=np.float32),
+                'y_trval': np.zeros((n_datasets, self.num_samples, *self.shape_y), dtype=np.float32)
+            }
+    
+    def _process_batch(self, dataset_idx, start_idx, end_idx):
+        """Process and cache a single dataset batch"""
+        dataset = self.datasets[dataset_idx]
+        batch = dataset[start_idx:end_idx]
+        X_trtr_batch, y_trtr_batch, X_trval_batch, y_trval_batch = zip(batch)
+        # print(len(X_trtr_batch))
+        # print(y_trtr_batch[-1][-1].shape)
+        # plt.plot(y_trtr_batch[-1][-1])
+        
+        return (
+            np.asarray(X_trtr_batch, dtype=np.float32)[0],
+            np.asarray(y_trtr_batch, dtype=np.float32)[0],
+            np.asarray(X_trval_batch, dtype=np.float32)[0],
+            np.asarray(y_trval_batch, dtype=np.float32)[0]
+        )
+    
+    def _process_dataset(self, args):
+        """Process a single dataset in parallel"""
+        self._init_thread_local_storage()
+        
+        i, start_idx, end_idx = args
+        arrays = self.thread_local.arrays
+        
+        X_trtr_batch, y_trtr_batch, X_trval_batch, y_trval_batch = self._process_batch(i, start_idx, end_idx)
+
+        return (X_trtr_batch, y_trtr_batch, X_trval_batch, y_trval_batch)
+    
+    def __getitem__(self, index):
+        start_idx = index * self.num_samples
+        end_idx = start_idx + self.num_samples
+        
+        # Create tasks for parallel processing
+        self._init_thread_local_storage()
+
+        tasks = [(i, start_idx, end_idx) for i in range(len(self.datasets))]
+        
+
+        results=list(self.executor.map(self._process_dataset, tasks))
+        X_trtr = np.stack([result[0] for result in results], axis=0)
+        y_trtr = np.stack([result[1] for result in results], axis=0)
+        X_trval = np.stack([result[2] for result in results], axis=0)
+        y_trval = np.stack([result[3] for result in results], axis=0)
+
+        return (
+            jnp.asarray(X_trtr),
+            jnp.asarray(y_trtr),
+            jnp.asarray(X_trval),
+            jnp.asarray(y_trval)
+        )
+
+    
+    def __del__(self):
+        """Cleanup executor on deletion"""
+        if hasattr(self, 'executor'):
+            self.executor.shutdown()
     
 
-# def jnp_collate_MAMLMAPS(batch: Sequence[Any]) -> Union[jnp.ndarray, tuple]:
-#     """
-#     Optimized collate function for MAML data loading.
+def jnp_collate_MAMLMAPS(batch: Sequence[Any]) -> Union[jnp.ndarray, tuple]:
+    """
+    Optimized collate function for MAML data loading.
     
-#     Args:
-#         batch: A sequence of data items to be collated
+    Args:
+        batch: A sequence of data items to be collated
         
-#     Returns:
-#         Collated data in JAX array format
-#     """
-#     # Fast path for empty batch
-#     if not batch:
-#         return batch
+    Returns:
+        Collated data in JAX array format
+    """
+    # Fast path for empty batch
+    if not batch:
+        return batch
     
-#     first_elem = batch[0]
+    first_elem = batch[0]
     
-#     # Fast path for JAX arrays
-#     if isinstance(first_elem, jnp.ndarray):
-#         return jnp.stack(batch)[0]
+    # Fast path for JAX arrays
+    if isinstance(first_elem, jnp.ndarray):
+        return jnp.stack(batch)[0]
     
-#     # Fast path for numpy arrays
-#     if isinstance(first_elem, np.ndarray):
-#         return jnp.asarray(np.stack(batch))[0]
+    # Fast path for numpy arrays
+    if isinstance(first_elem, np.ndarray):
+        return jnp.asarray(np.stack(batch))[0]
     
-#     # Handle tuples and lists
-#     if isinstance(first_elem, (tuple, list)):
-#         transposed = zip(*batch)
-#         elem_type = type(first_elem)
-#         # Use partial for faster function calls
-#         collate_fn = partial(jnp_collate_MAMLMAPS)
-#         return elem_type(map(collate_fn, transposed))
+    # Handle tuples and lists
+    if isinstance(first_elem, (tuple, list)):
+        transposed = zip(*batch)
+        elem_type = type(first_elem)
+        # Use partial for faster function calls
+        collate_fn = partial(jnp_collate_MAMLMAPS)
+        return elem_type(map(collate_fn, transposed))
     
-#     # Default case: convert to JAX array
-#     try:
-#         return jnp.asarray(batch)
-#     except:
-#         # Fallback for non-array-like data
-#         return batch
+    # Default case: convert to JAX array
+    try:
+        return jnp.asarray(batch)
+    except:
+        # Fallback for non-array-like data
+        return batch
 
 
 # %% Original
