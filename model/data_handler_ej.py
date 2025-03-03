@@ -436,6 +436,8 @@ def save_info_unitSplit(fname,info_unitSplit):
     fname = fname_data_train_val_test+'.h5'
     """
     f = h5py.File(fname,'a')
+    if 'info_unitSplit' in f:
+        del f['info_unitSplit']
     hf = f.create_group('/info_unitSplit')
     for key, value in info_unitSplit.items():
         if isinstance(value, np.ndarray):

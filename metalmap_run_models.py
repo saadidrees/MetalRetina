@@ -63,7 +63,6 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     # config.update("jax_default_dtype_bits", 16)  # Forces `bfloat16` globally
     
     DTYPE='float32'
-    LOSS_FUN='poisson'
 
     Exptdata = namedtuple('Exptdata', ['X', 'y'])
     Exptdata_spikes = namedtuple('Exptdata', ['X', 'y','spikes'])
@@ -125,7 +124,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         and data_train.y contains the spikerate normalized by median [samples,numOfCells]
     """
     BUILD_MAPS = False
-    MAX_RGCS = 500
+    MAX_RGCS = model.train_metalmaps.MAX_RGCS
 
 
     trainingSamps_dur_orig = trainingSamps_dur
@@ -152,7 +151,6 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     else:
         fname_data_train_val_test_all = fname_data_train_val_test.split('+')
     
-    path_model_save_base = os.path.join(path_model_save_base,APPROACH,trainList,LOSS_FUN)
     
     # Get the total num of samples and RGCs in each dataset
     nsamps_alldsets = []
@@ -558,6 +556,9 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
      3. Build a new model but transfer some or all weights (In this case the weight transferring layers should be similar)
     """
     
+    LOSS_FUN = model.train_metalmaps.LOSS_FUN
+    path_model_save_base = os.path.join(path_model_save_base,APPROACH,trainList,LOSS_FUN)
+
     
     inp_shape = dict_trtr[dset].X[0].shape
     out_shape = dict_trtr[dset].y[0].shape[-1]
@@ -673,6 +674,8 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         
     models_jax.model_summary(mdl,inp_shape,console_kwargs={'width':180})
     
+    training_params = dict(LOSS_FUN=LOSS_FUN)
+    
         
 # %% Log all params and hyperparams
     
@@ -689,6 +692,10 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     
     for key,val in psf_params.items():
         params_txt[key] = val
+        
+    for key,val in training_params.items():
+        params_txt[key] = val
+
 
    
     fname_paramsTxt = os.path.join(path_model_save,'model_log.txt')
@@ -710,7 +717,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     if initial_epoch < nb_epochs:
         print('-----RUNNING MODEL-----')
         
-        loss_currEpoch_master,loss_epoch_train,loss_epoch_val,mdl_state,weights_dense,fev_epoch_train,fev_epoch_val = train_metalmaps.train(mdl_state,weights_output,config,\
+        loss_currEpoch_master,loss_epoch_train,loss_epoch_val,mdl_state,weights_dense,fev_epoch_train,fev_epoch_val = train_metalmaps.train(mdl_state,weights_output,config,training_params,\
                                                                                       dataloader_train,dataloader_val,dinf_tr,dinf_val,nb_epochs,path_model_save,save=True,lr_schedule=lr_schedule,\
                                                                                           APPROACH=APPROACH,step_start=initial_epoch+1)
         _ = gc.collect()

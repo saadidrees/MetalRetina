@@ -65,7 +65,7 @@ def normalize_responses(data,norm_val):
     
     return Exptdata_spikes(data.X,y,data.spikes)
 
-def arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf_params,info_unitSplit=None,BUILD_MAPS=False,MODE='training'):
+def arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf_params,info_unitSplit=None,BUILD_MAPS=False,MODE='training',NORMALIZE_RESP=1):
     """
     mode can be either training in whic case we split units across training and validation sets. In validation mode we keep all units for validation
     """
@@ -76,10 +76,11 @@ def arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf
     
     # dinf,data_train,data_val = remove_boundary_units(dinf,data_train,data_val)  # This step is already done in dataset creation stage
     
-    rgb = np.concatenate((data_train.y,data_val.y),axis=0)
-    max_resp = np.max(rgb,axis=0)
-    data_train = normalize_responses(data_train,max_resp)
-    data_val = normalize_responses(data_val,max_resp)
+    if NORMALIZE_RESP==1:
+        rgb = np.concatenate((data_train.y,data_val.y),axis=0)
+        max_resp = np.max(rgb,axis=0)
+        data_train = normalize_responses(data_train,max_resp)
+        data_val = normalize_responses(data_val,max_resp)
 
     
     if (info_unitSplit==None and frac_train_units==1) or MODE=='validation':
