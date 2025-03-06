@@ -58,7 +58,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     from model import models_jax, train_singleretunits, dataloaders,handler_maps
     from model import train_metalmaps
     from torch.utils.data import DataLoader
-    
+    from tqdm.auto import tqdm
     # from jax import config
     # config.update("jax_default_dtype_bits", 16)  # Forces `bfloat16` globally
     
@@ -109,13 +109,15 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
 
     # path to save results to - PARAMETERIZE THIS
     if runOnCluster==1:
-        path_save_performance = '/home/sidrees/scratch/RetinaPredictors/performance'
+        path_save_performance = '/home/sidrees/scratch/MetalRetina/performance'
     else:
-        path_save_performance = '/home/saad/postdoc_db/projects/RetinaPredictors/performance'
+        path_save_performance = '/home/saad/postdoc_db/projects/MetalRetina/performance'
     
     
     if not os.path.exists(path_save_performance):
         os.makedirs(path_save_performance)
+        
+    path_model_save_base_orig = path_model_save_base
           
 # % load train val and test datasets from saved h5 file
     """
@@ -362,7 +364,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     
     # data_train = dataset_shuffle(data_train,n_train)
 
- # %% Prepare dataloaders for metalzero Training
+ # %% Prepare dataloaders
         
     
     """
@@ -514,14 +516,15 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     
     print('Total training data duration: %0.2f mins'%(run_info['nsamps_train']*t_frame/1000/60))
 
-
-
+# %
     # ---- Batch size and LRs    
     bz = batch_size_train #math.ceil(bz_ms/t_frame)   # input batch size (bz_ms) is in ms. Convert into samples
     n_batches = len(dataloader_train)#np.ceil(len(data_train.X)/bz)
     
     if lrscheduler == 'exponential_decay':
-        lr_schedule = optax.exponential_decay(init_value=lr,transition_steps=n_batches*1,decay_rate=0.75,staircase=True,transition_begin=0)
+        # lr_schedule = optax.exponential_decay(init_value=lr,transition_steps=n_batches*1,decay_rate=0.75,staircase=True,transition_begin=0)
+        lr_schedule = optax.exponential_decay(init_value=lr,transition_steps=500,decay_rate=0.75,staircase=True,transition_begin=0,end_value=1e-8)
+
     
     elif lrscheduler == 'warmup_exponential_decay':
         
@@ -536,17 +539,26 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         lr_schedule = optax.join_schedules(schedules=[warmup_schedule,decay_schedule],boundaries=[n_batches*n_warmup])
     elif lrscheduler=='linear':
         lr_schedule = optax.linear_schedule(init_value=lr,end_value=1e-9,transition_steps=n_batches*50)
+        lr_schedule = optax.linear_schedule(init_value=lr,end_value=1e-9,transition_steps=100)
+
 
     else:
         lr_schedule = optax.constant_schedule(lr)
 
 
-    epochs = np.arange(0,nb_epochs)
-    epochs_steps = np.arange(0,nb_epochs*n_batches,n_batches)
-    rgb_lrs = [lr_schedule(i) for i in epochs_steps]
+    # epochs = np.arange(0,nb_epochs)
+    # epochs_steps = np.arange(0,nb_epochs*n_batches,n_batches)
+    # rgb_lrs = [lr_schedule(i) for i in epochs_steps]
+    # rgb_lrs = np.array(rgb_lrs)
+    # plt.plot(epochs,rgb_lrs);plt.show()
+    # print(np.array(rgb_lrs))
+    
+    total_steps = n_batches*nb_epochs
+    rgb_lrs = [lr_schedule(i) for i in range(total_steps)]
     rgb_lrs = np.array(rgb_lrs)
-    plt.plot(epochs,rgb_lrs);plt.show()
+    plt.plot(rgb_lrs);plt.show()
     print(np.array(rgb_lrs))
+
 
 # %% Select model 
     """
@@ -557,7 +569,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     """
     
     LOSS_FUN = model.train_metalmaps.LOSS_FUN
-    path_model_save_base = os.path.join(path_model_save_base,APPROACH,trainList,LOSS_FUN)
+    path_model_save_base = os.path.join(path_model_save_base_orig,APPROACH,trainList,LOSS_FUN)
 
     
     inp_shape = dict_trtr[dset].X[0].shape
@@ -674,8 +686,8 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         
     models_jax.model_summary(mdl,inp_shape,console_kwargs={'width':180})
     
-    training_params = dict(LOSS_FUN=LOSS_FUN)
     
+    training_params = dict(LOSS_FUN=LOSS_FUN)
         
 # %% Log all params and hyperparams
     
@@ -685,7 +697,8 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
                       trainingSamps_dur=trainingSamps_dur_orig,validationSamps_dur=validationSamps_dur,CONTINUE_TRAINING=CONTINUE_TRAINING,
                       idxStart_fixedLayers=idxStart_fixedLayers,idxEnd_fixedLayers=idxEnd_fixedLayers,
                       info=info,lr=rgb_lrs,lr_fac=lr_fac,use_lrscheduler=use_lrscheduler,lr_schedule=lr_schedule,batch_size=bz,initial_epoch=initial_epoch,
-                      MAX_RGCS=MAX_RGCS,FRAC_U_TRTR=FRAC_U_TRTR,BUILD_MAPS=BUILD_MAPS,nsamps_max=nsamps_max,cell_types_unique=cell_types_unique,c_tr_sum=c_tr.sum(),APPROACH=APPROACH)
+                      MAX_RGCS=MAX_RGCS,FRAC_U_TRTR=FRAC_U_TRTR,BUILD_MAPS=BUILD_MAPS,nsamps_max=nsamps_max,cell_types_unique=cell_types_unique,c_tr_sum=c_tr.sum(),APPROACH=APPROACH,
+                      n_batches=n_batches)
     
     for key in dict_params.keys():
         params_txt[key] = dict_params[key]
@@ -711,15 +724,24 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
 
     
 # %% Train model metalzero
+    if runOnCluster==0:
+        cp_interval = 50
+    else:
+        ncps_perEpoch = 25
+        cp_interval = model.utils_si.round_to_even(n_batches/ncps_perEpoch)
+
+        
+    training_params['cp_interval'] = cp_interval
+
     t_elapsed = 0
     t = time.time()
     approach=APPROACH
     if initial_epoch < nb_epochs:
         print('-----RUNNING MODEL-----')
         
-        loss_currEpoch_master,loss_epoch_train,loss_epoch_val,mdl_state,weights_dense,fev_epoch_train,fev_epoch_val = train_metalmaps.train(mdl_state,weights_output,config,training_params,\
+        loss_currEpoch_master,loss_epoch_train,loss_epoch_val,mdl_state,weights_dense,fev_epoch_train,fev_epoch_val = train_metalmaps.train_step(mdl_state,weights_output,config,training_params,\
                                                                                       dataloader_train,dataloader_val,dinf_tr,dinf_val,nb_epochs,path_model_save,save=True,lr_schedule=lr_schedule,\
-                                                                                          APPROACH=APPROACH,step_start=initial_epoch+1)
+                                                                                          APPROACH=APPROACH,step_start=initial_epoch+1,runOnCluster=runOnCluster)
         _ = gc.collect()
             
     t_elapsed = time.time()-t
@@ -727,6 +749,38 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
 
     # %% Model Evaluation
     
+    allSteps = glob.glob(path_model_save+'/step*')
+    assert  len(allSteps)!=0, 'No checkpoints found'
+
+    step_numbers = np.sort(np.asarray([int(re.search(r'step-(\d+)', s).group(1)) for s in allSteps]))
+        
+    nb_cps = len(allSteps)
+
+    # with open(os.path.join(path_model_save,'model_architecture.pkl'), 'rb') as f:
+    #     mdl,config = cloudpickle.load(f)
+    # orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+
+    bias_allSteps=[]; 
+    for i in tqdm(range(nb_cps)):
+        fname_latestWeights = os.path.join(path_model_save,'step-%03d' % step_numbers[i])
+        # print(fname_latestWeights)
+        raw_restored = orbax_checkpointer.restore(fname_latestWeights)
+        mdl_state = train_singleretunits.load(mdl,raw_restored['model'],lr)
+        
+        weights = mdl_state.params
+        output_bias = np.array(weights['output']['bias'])
+        bias_allSteps.append(output_bias.sum())
+
+    if sum(np.isnan(bias_allSteps))>0:
+        last_cp = np.where(np.isnan(bias_allSteps))[0][0]-1     # Where the weights are not nan
+    else:
+        last_cp = nb_cps
+        
+    nb_cps = last_cp
+    last_cp = step_numbers[last_cp-1]
+
+    fname_lastcp = os.path.join(path_model_save,'step-%03d' % last_cp)
+
     # Select the testing dataset
     d=11
 
@@ -737,25 +791,25 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         
         n_cells = dinf_val['N_val'][idx_dset]
     
-        nb_epochs = np.max([initial_epoch,nb_epochs])   # number of epochs. Update this variable based on the epoch at which training ended
-        val_loss_allEpochs = np.empty(nb_epochs)
+        # nb_epochs = np.max([initial_epoch,nb_epochs])   # number of epochs. Update this variable based on the epoch at which training ended
+        val_loss_allEpochs = np.empty(nb_cps)
         val_loss_allEpochs[:] = np.nan
-        fev_medianUnits_allEpochs = np.empty(nb_epochs)
+        fev_medianUnits_allEpochs = np.empty(nb_cps)
         fev_medianUnits_allEpochs[:] = np.nan
-        fev_allUnits_allEpochs = np.zeros((nb_epochs,n_cells))
+        fev_allUnits_allEpochs = np.zeros((nb_cps,n_cells))
         fev_allUnits_allEpochs[:] = np.nan
-        fracExVar_medianUnits_allEpochs = np.empty(nb_epochs)
+        fracExVar_medianUnits_allEpochs = np.empty(nb_cps)
         fracExVar_medianUnits_allEpochs[:] = np.nan
-        fracExVar_allUnits_allEpochs = np.zeros((nb_epochs,n_cells))
+        fracExVar_allUnits_allEpochs = np.zeros((nb_cps,n_cells))
         fracExVar_allUnits_allEpochs[:] = np.nan
         
-        predCorr_medianUnits_allEpochs = np.empty(nb_epochs)
+        predCorr_medianUnits_allEpochs = np.empty(nb_cps)
         predCorr_medianUnits_allEpochs[:] = np.nan
-        predCorr_allUnits_allEpochs = np.zeros((nb_epochs,n_cells))
+        predCorr_allUnits_allEpochs = np.zeros((nb_cps,n_cells))
         predCorr_allUnits_allEpochs[:] = np.nan
-        rrCorr_medianUnits_allEpochs = np.empty(nb_epochs)
+        rrCorr_medianUnits_allEpochs = np.empty(nb_cps)
         rrCorr_medianUnits_allEpochs[:] = np.nan
-        rrCorr_allUnits_allEpochs = np.zeros((nb_epochs,n_cells))
+        rrCorr_allUnits_allEpochs = np.zeros((nb_cps,n_cells))
         rrCorr_allUnits_allEpochs[:] = np.nan
         
         data_val = dict_val[fname_data_train_val_test_all[idx_dset]]
@@ -798,11 +852,11 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     
     
         print('-----EVALUATING PERFORMANCE-----')
-        i=0
-        for i in range(0,nb_epochs):
-            print('evaluating epoch %d of %d'%(i,nb_epochs))
+        i=nb_cps-1
+        for i in range(0,nb_cps-1):
+            print('evaluating checkpoint %d of %d'%(i,nb_cps))
             # weight_file = 'weights_'+fname_model+'_epoch-%03d.h5' % (i+1)
-            weight_fold = 'epoch-%03d' % (i)  # 'file_name_{}_{:.03f}.png'.format(f_nm, val)
+            weight_fold = 'step-%03d' % step_numbers[i]  # 'file_name_{}_{:.03f}.png'.format(f_nm, val)
             weight_file = os.path.join(path_model_save,weight_fold)
             weights_dense_file = os.path.join(path_model_save,weight_fold,'weights_output.h5')
     
@@ -1060,6 +1114,159 @@ if __name__ == "__main__":
 
 # %% Recycle
 """
+
+    d=11
+
+    for d in np.arange(0,len(fname_data_train_val_test_all)):   
+        idx_dset = d
+        dinf_batch_val = jax.tree_map(lambda x: x[idx_dset] if isinstance(x, np.ndarray) else x, dinf_val)
+
+        
+        n_cells = dinf_val['N_val'][idx_dset]
+    
+        nb_epochs = np.max([initial_epoch,nb_epochs])   # number of epochs. Update this variable based on the epoch at which training ended
+        val_loss_allEpochs = np.empty(nb_epochs)
+        val_loss_allEpochs[:] = np.nan
+        fev_medianUnits_allEpochs = np.empty(nb_epochs)
+        fev_medianUnits_allEpochs[:] = np.nan
+        fev_allUnits_allEpochs = np.zeros((nb_epochs,n_cells))
+        fev_allUnits_allEpochs[:] = np.nan
+        fracExVar_medianUnits_allEpochs = np.empty(nb_epochs)
+        fracExVar_medianUnits_allEpochs[:] = np.nan
+        fracExVar_allUnits_allEpochs = np.zeros((nb_epochs,n_cells))
+        fracExVar_allUnits_allEpochs[:] = np.nan
+        
+        predCorr_medianUnits_allEpochs = np.empty(nb_epochs)
+        predCorr_medianUnits_allEpochs[:] = np.nan
+        predCorr_allUnits_allEpochs = np.zeros((nb_epochs,n_cells))
+        predCorr_allUnits_allEpochs[:] = np.nan
+        rrCorr_medianUnits_allEpochs = np.empty(nb_epochs)
+        rrCorr_medianUnits_allEpochs[:] = np.nan
+        rrCorr_allUnits_allEpochs = np.zeros((nb_epochs,n_cells))
+        rrCorr_allUnits_allEpochs[:] = np.nan
+        
+        data_val = dict_val[fname_data_train_val_test_all[idx_dset]]
+        
+        if isintuple(data_val,'y_trials'):
+            rgb = np.squeeze(np.asarray(data_val.y_trials))
+            obs_noise = 0#estimate_noise(rgb)
+            # obs_noise = estimate_noise(data_test.y_trials)
+            obs_rate_allStimTrials = np.asarray(data_val.y)
+            num_iters = 1
+            
+        elif 'stim_0' in dataset_rr and dataset_rr['stim_0']['val'][:,:,idx_unitsToTake].shape[0]>1:
+            obs_rate_allStimTrials = dataset_rr['stim_0']['val'][:,:,idx_unitsToTake]
+            obs_noise = None
+            num_iters = 10
+        else:
+            obs_rate_allStimTrials = np.asarray(data_val.y)
+            if 'var_noise' in data_quality:
+                obs_noise = data_quality['var_noise'][idx_unitsToTake]
+            else:
+                obs_noise = 0
+            num_iters = 1
+        
+        if isintuple(data_val,'dset_names'):
+            rgb = data_val.dset_names
+            idx_natstim = [i for i,n in enumerate(rgb) if re.search(r'NATSTIM',n)]
+            idx_cb = [i for i,n in enumerate(rgb) if re.search(r'CB',n)]
+            
+        # if obs_noise.shape[0] == mask_unitsToTake_all[idx_dset].shape[0]:
+        # obs_noise = obs_noise[mask_unitsToTake_all[idx_dset]==1]
+
+        samps_shift = 0 # number of samples to shift the response by. This was to correct some timestamp error in gregs data
+      
+        orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+    
+        RetinaDataset_val = dataloaders.RetinaDataset(data_val.X,data_val.y,transform=None)
+        dataloader_val = DataLoader(RetinaDataset_val,batch_size=512,collate_fn=dataloaders.jnp_collate)
+    
+        # mdl_state,mdl,config = model.jax.train_singleretunits.initialize_model(mdl,dict_params,inp_shape,lr,save_model=False)
+    
+    
+        print('-----EVALUATING PERFORMANCE-----')
+        i=0
+        for i in range(0,nb_epochs):
+            print('evaluating epoch %d of %d'%(i,nb_epochs))
+            # weight_file = 'weights_'+fname_model+'_epoch-%03d.h5' % (i+1)
+            weight_fold = 'epoch-%03d' % (i)  # 'file_name_{}_{:.03f}.png'.format(f_nm, val)
+            weight_file = os.path.join(path_model_save,weight_fold)
+            weights_dense_file = os.path.join(path_model_save,weight_fold,'weights_output.h5')
+    
+            if os.path.isdir(weight_file):
+                raw_restored = orbax_checkpointer.restore(weight_file)
+                mdl_state = train_metalmaps.load(mdl,raw_restored['model'],lr)
+                
+                with h5py.File(weights_dense_file,'r') as f:
+                    weights_kern = jnp.array(f['weights_output_kernel'][idx_dset])
+                    weights_bias = jnp.array(f['weights_output_bias'][idx_dset])
+                    
+                # Restore the correct dense weights for this dataset
+                mdl_state.params['output']['kernel'] = weights_kern
+                mdl_state.params['output']['bias'] = weights_bias
+    
+                val_loss,pred_rate,y,pred_rate_units,y_units = train_metalmaps.eval_step(mdl_state,dataloader_val,dinf_batch_val)
+                val_loss = np.mean(val_loss)
+        
+                val_loss_allEpochs[i] = val_loss
+                
+        
+                fev, fracExVar, predCorr, rrCorr = model_evaluate_new(y_units,pred_rate_units,temporal_width_eval,lag=int(samps_shift),obs_noise=0)
+                        
+                fev_allUnits_allEpochs[i,:] = fev
+                fev_medianUnits_allEpochs[i] = np.nanmedian(fev)      
+                # fracExVar_allUnits_allEpochs[i,:] = fracExVar
+                # fracExVar_medianUnits_allEpochs[i] = np.nanmedian(fracExVar)
+                
+                predCorr_allUnits_allEpochs[i,:] = predCorr
+                predCorr_medianUnits_allEpochs[i] = np.nanmedian(predCorr)
+                # rrCorr_allUnits_allEpochs[i,:] = rrCorr
+                # rrCorr_medianUnits_allEpochs[i] = np.nanmedian(rrCorr)
+                
+                _ = gc.collect()
+        
+        fig,axs = plt.subplots(1,1,figsize=(7,5)); axs.plot(predCorr_medianUnits_allEpochs)
+        axs.set_xlabel('Epochs');axs.set_ylabel('Corr'); fig.suptitle(dset_names[idx_dset] + ' | '+str(dict_params['nout'])+' RGCs')
+        
+        fname_fig = os.path.join(path_model_save,'fev_val_%s.png'%dset_names[idx_dset])
+        fig.savefig(fname_fig)
+        
+        
+        idx_bestEpoch = nb_epochs-1#np.nanargmax(fev_medianUnits_allEpochs)
+        # idx_bestEpoch = np.nanargmax(fev_medianUnits_allEpochs)
+        fev_medianUnits_bestEpoch = np.round(fev_medianUnits_allEpochs[idx_bestEpoch],2)
+        fev_allUnits_bestEpoch = fev_allUnits_allEpochs[(idx_bestEpoch),:]
+        fracExVar_medianUnits = np.round(fracExVar_medianUnits_allEpochs[idx_bestEpoch],2)
+        fracExVar_allUnits = fracExVar_allUnits_allEpochs[(idx_bestEpoch),:]
+        
+        predCorr_medianUnits_bestEpoch = np.round(predCorr_medianUnits_allEpochs[idx_bestEpoch],2)
+        predCorr_allUnits_bestEpoch = predCorr_allUnits_allEpochs[(idx_bestEpoch),:]
+        rrCorr_medianUnits = np.round(rrCorr_medianUnits_allEpochs[idx_bestEpoch],2)
+        rrCorr_allUnits = rrCorr_allUnits_allEpochs[(idx_bestEpoch),:]
+    
+        
+        # Load the best weights to save stuff
+        weight_fold = 'epoch-%03d' % (idx_bestEpoch)  # 'file_name_{}_{:.03f}.png'.format(f_nm, val)
+        weight_file = os.path.join(path_model_save,weight_fold)
+        weights_dense_file = os.path.join(path_model_save,weight_fold,'weights_dense.h5')
+    
+        raw_restored = orbax_checkpointer.restore(weight_file)
+        mdl_state = train_metalmaps.load(mdl,raw_restored['model'],lr)
+        
+        with h5py.File(weights_dense_file,'r') as f:
+            weights_kern = jnp.array(f['weights_output_kernel'][idx_dset])
+            weights_bias = jnp.array(f['weights_output_bias'][idx_dset])
+            
+        # Restore the correct dense weights for this dataset
+        mdl_state.params['output']['kernel'] = weights_kern
+        mdl_state.params['output']['bias'] = weights_bias
+    
+        
+        val_loss,pred_rate,y,pred_rate_units,y_units = train_metalmaps.eval_step(mdl_state,dataloader_val,dinf_batch_val)
+        fname_bestWeight = np.array(weight_file,dtype='bytes')
+        fev_val, fracExVar_val, predCorr_val, rrCorr_val = model_evaluate_new(y_units,pred_rate_units,temporal_width_eval,lag=int(samps_shift),obs_noise=obs_noise)
+
+
     # % Prepare dataloaders for metalzero Training
     
     n_tasks = len(fname_data_train_val_test_all)    
