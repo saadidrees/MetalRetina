@@ -9,6 +9,12 @@ Created on Mon Feb 15 12:34:40 2021
 import numpy as np
 import math
 
+def round_to_even(n):
+    rounded = int(n // 1)  # Get the integer part (floor)
+    if rounded % 2 == 1:   # If the integer is odd
+        return rounded + 1 # Always round up to the next even number
+    return rounded         # If already even, return as is
+
 def h5_tostring(arr):
     new_arr = np.empty(arr.shape[0],dtype='object')
     for i in range(arr.shape[0]):

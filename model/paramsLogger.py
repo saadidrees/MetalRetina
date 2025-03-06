@@ -53,3 +53,20 @@ def dictToTxt(params_txt,fname_paramsTxt,f_mode='a'):
             fo.write(str(k) + ' = '+ str(v) + '\n')
     
     fo.close()
+    
+    
+def read_config(file_path, keys):
+    values = {}
+    with open(file_path, "r") as f:
+        for line in f:
+            if "=" in line:
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip()
+                if key in keys:
+                    try:
+                        values[key] = eval(value)  # Safely convert numbers/bools
+                    except:
+                        values[key] = value  # Keep as string if eval fails
+    return values
+

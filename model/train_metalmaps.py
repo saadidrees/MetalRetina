@@ -183,10 +183,8 @@ def calc_loss(y_pred,y,coords,segment_size,N_tr,mask_tr):
 
         loss = poisson_loss+mad_loss+reg_loss
 
-        
-        
-    loss = (loss*mask_tr[None,:])/N_tr
-    loss=jnp.nansum(loss)
+    loss = (loss*mask_tr[None,:])
+    loss=jnp.nansum(loss)/(N_tr*loss.shape[0])
     
     return loss,y_units,y_pred_units
 
@@ -409,7 +407,7 @@ def train_step_metalzero1step(mdl_state,batch,weights_output,lr,dinf_tr):       
     MAX_RGCS = dinf_tr['MAX_RGCS']
     cell_types_unique = dinf_tr['cell_types_unique']
     segment_size = dinf_tr['segment_size']
-    lr_inner = lr/10
+    lr_inner = lr*10
 
 
     if NUM_SPLITS==0:
@@ -886,6 +884,156 @@ def train(mdl_state,weights_output,config,training_params,dataloader_train,datal
     return loss_currEpoch_master,loss_epoch_train,loss_epoch_val,mdl_state,weights_output,fev_epoch_train,fev_epoch_val
 
 
+def train_step(mdl_state,weights_output,config,training_params,dataloader_train,dataloader_val,dinf_tr,dinf_val,nb_epochs,path_model_save,save=False,lr_schedule=None,step_start=0,
+               APPROACH='metal',idx_valdset=0,runOnCluster=0):
+    """
+    RESP_FORMAT='MAPS'
+    RESP_FORMAT='UNITS'
+
+    """
+    print('Training scheme: %s'%APPROACH)
+    save = True
+    step_start=0
+    
+    
+    # learning_rate_fn = create_learning_rate_scheduler(lr_schedule)
+    
+    loss_epoch_train = []
+    loss_epoch_val = []
+    
+    loss_batch_train = []
+    loss_batch_val = []
+    
+    fev_epoch_train = []
+    fev_epoch_val = []
+
+    idx_valdset = 2#7
+    dinf_batch_val = jax.tree_map(lambda x: x[idx_valdset] if isinstance(x, np.ndarray) else x, dinf_val)
+    dinf_batch_valtr = dict(N_val=dinf_tr['N_trtr'][idx_valdset],
+                            maskunits_val=dinf_tr['maskunits_trtr'][idx_valdset],
+                            umaskcoords_val=dinf_tr['umaskcoords_trtr'][idx_valdset],
+                            segment_size=dinf_tr['segment_size'])
+
+    n_batches = len(dataloader_train)
+    print('Total batches: %d'%n_batches)
+    epoch=0
+    steps_total = nb_epochs*n_batches
+    pbar = tqdm(total=steps_total, desc="Processing Steps")  # Initialize progress bar
+    
+    
+    # cp_interval=training_params['cp_interval']
+
+    ctr_step = 0
+    step=0
+    for epoch in range(step_start,nb_epochs):
+        _ = gc.collect()
+        loss_batch_train=[]
+        # batch_train = next(iter(dataloader_train)); batch=batch_train; 
+        ctr_batch=-1
+        ctr_batch_master = -1
+        t_dl = time.time()
+        for batch_train in dataloader_train:
+            ctr_step = ctr_step+1
+
+            t_dl = time.time()-t_dl
+            ctr_batch = ctr_batch+1
+            ctr_batch_master=ctr_batch_master+1
+            
+            current_lr = lr_schedule(mdl_state.step)     
+            
+            t_tr=time.time()
+            if APPROACH == 'metalzero':
+                loss,mdl_state,weights_output,grads = train_step_metalzero(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
+            elif APPROACH == 'metalzero1step':
+                loss,mdl_state,weights_output,grads = train_step_metalzero1step(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
+                
+            t_tr = time.time()-t_tr
+            t_other = time.time()
+            loss_batch_train.append(loss)
+            # if ctr_batch_master==0 or ctr_batch==10:
+            #     ctr_batch=0
+            # else:
+                
+            # gc.collect()
+            t_other = time.time()-t_other
+            pbar.set_postfix({"Epoch": epoch, "Loss": f"{loss:.2f}", "LR": f"{np.array(current_lr):.3E}"})
+            pbar.update(1)
+
+            
+            if ctr_step%training_params['cp_interval']==0 or ctr_step%n_batches==0:         # Save if either cp interval reached or end of epoch reached
+                # print('Epoch %d | Loss: %0.2f | LR: %0.3E'%(epoch,loss,np.array(current_lr)))
+                grads_cpu = to_cpu(grads)
+                del grads
+
+                aux = dict(loss_batch_train=np.array(loss_batch_train),grads=grads_cpu)
+                # t=time.time()
+                if save == True:
+                    fname_cp = os.path.join(path_model_save,'step-%03d'%ctr_step)
+                    save_epoch(mdl_state,config,weights_output,fname_cp,aux=aux)
+                    loss_batch_train = []
+                    
+                # elap = time.time()-t
+                # print('File saving time: %f mins',elap/60)
+
+            t_dl = time.time()
+
+
+        # assert jnp.sum(grads['Conv_0']['kernel']) != 0, 'Gradients are Zero'
+        
+        print('Finished training on batch')
+        print('Gonna start ealuating the batch')
+        
+        # For validation, update the new state with weights from the idx_valdset task
+        mdl_state_val = mdl_state
+        if APPROACH == 'metal':
+            mdl_state_val.params['output']['kernel'] = weights_output[0][idx_valdset]
+            mdl_state_val.params['output']['bias'] = weights_output[1][idx_valdset]
+            
+    
+        loss_batch_val = []
+        # batch = next(iter(dataloader_val))
+        # t = time.time()
+        # for batch_val in dataloader_val:
+        loss_batch_val,y_pred,y,y_pred_val_units,y_val_units = eval_step(mdl_state_val,dataloader_val,dinf_batch_val)
+        
+        # elap = time.time()-t
+        # print('Val time: %f',elap)
+
+        # t = time.time()
+        loss_batch_train_test,y_pred_train,y_train,y_pred_train_units,y_train_units = eval_step(mdl_state_val,(batch_train[0][idx_valdset],batch_train[1][idx_valdset]),dinf_batch_valtr)
+        
+        loss_currEpoch_master = np.mean(loss_batch_train)
+        loss_currEpoch_train = np.mean(loss_batch_train_test)
+        loss_currEpoch_val = np.mean(loss_batch_val)
+    
+        loss_epoch_train.append(np.mean(loss_currEpoch_train))
+        loss_epoch_val.append(np.mean(loss_currEpoch_val))
+        
+        current_lr = lr_schedule(mdl_state.step)
+        
+        temporal_width_eval = batch_train[0].shape[1]
+        fev_val,_,predCorr_val,_ = model_evaluate_new(y_val_units,y_pred_val_units,temporal_width_eval,lag=0,obs_noise=0)
+        fev_val_med,predCorr_val_med = np.median(fev_val),np.median(predCorr_val)
+        fev_train,_,predCorr_train,_ = model_evaluate_new(y_train_units,y_pred_train_units,temporal_width_eval,lag=0,obs_noise=0)
+        fev_train_med,predCorr_train_med = np.median(fev_train),np.median(predCorr_train)
+        
+        fev_epoch_train.append(fev_train_med)
+        fev_epoch_val.append(fev_val_med)
+
+        print('Epoch: %d, global_loss: %.2f || local_train_loss: %.2f, fev: %.2f, corr: %.2f || local_val_loss: %.2f, fev: %.2f, corr: %.2f || lr: %.2e'\
+              %(epoch+1,loss_currEpoch_master,loss_currEpoch_train,fev_train_med,predCorr_train_med,loss_currEpoch_val,fev_val_med,predCorr_val_med,current_lr))
+        
+            
+        # fig,axs = plt.subplots(2,1,figsize=(20,10));axs=np.ravel(axs);fig.suptitle('Epoch: %d'%(epoch+1))
+        # axs[0].plot(y_train_units[:200,2]);axs[0].plot(y_pred_train_units[:200,10]);axs[0].set_title('Train')
+        # axs[1].plot(y_units[:,10]);axs[1].plot(y_pred_units[:,10]);axs[1].set_title('Validation')
+        # plt.show()
+        # plt.close()
+        
+
+    return loss_currEpoch_master,loss_epoch_train,loss_epoch_val,mdl_state,weights_output,fev_epoch_train,fev_epoch_val
+
+
 
 # %% Recycle
 # @jax.jit
@@ -1147,4 +1295,25 @@ def train(mdl_state,weights_output,config,training_params,dataloader_train,datal
 #     """
 
 #     return local_losses_summed,mdl_state,weights_output,local_grads_summed
+
+
+
+
+
+# LOSS FUNC TESTS
+# y = .5
+# y_pred = np.arange(0.1,1.1,.1)
+
+# poisson_loss = y_pred-y*np.log(y_pred)
+# alt_loss = np.abs(y-y_pred)/(0.5*(np.abs(y)+np.abs(y_pred)))
+# mape_loss = np.abs((y-y_pred)/(y+1e-6))
+# mad_loss = np.abs(y-y_pred)
+# reg = 2e-1*y_pred
+
+# lamb = 1
+# comb_loss = lamb*poisson_loss + (1-lamb)*mad_loss+reg
+
+# plt.plot(y_pred,poisson_loss)
+# plt.plot(y_pred,mad_loss)
+# plt.plot(y_pred,comb_loss)
 

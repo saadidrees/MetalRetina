@@ -21,7 +21,7 @@ def model_definitions():
         How to arrange the datasets depends on which model is being used
     """
     
-    models_2D = ('CNN2D','CNN2D_MAXPOOL','CNN2D_FT','CNN2D_FT2','CNN2D_LNORM','CNN2D_MAP','CNN2D_MAPTAF')
+    models_2D = ('CNN2D','CNN2D_MAXPOOL','CNN2D_FT','CNN2D_FT2','CNN2D_LNORM','CNN2D_MAP','CNN2D_MAP2','CNN2D_MAPTAF')
     
     models_3D = ('CNN_3D','PR_CNN3D')
     
@@ -445,7 +445,9 @@ class CNN2D_MAP(nn.Module):
 
         return outputs        
     
-class CNN2D_MAPTAF(nn.Module):
+    
+    
+class CNN2D_MAP2(nn.Module):
     
     chan1_n : int
     filt1_size : int
@@ -475,10 +477,10 @@ class CNN2D_MAPTAF(nn.Module):
             y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
 
         if self.BatchNorm == 1:
-            rgb = y.shape[1:]
-            y = y.reshape(y.shape[0],-1)
-            y = nn.LayerNorm(use_bias=True,use_scale=True)(y)
-            y = y.reshape(y.shape[0],*rgb)
+            # rgb = y.shape[1:]
+            # y = y.reshape(y.shape[0],-1)
+            y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+            # y = y.reshape(y.shape[0],*rgb)
 
             # y = nn.BatchNorm(axis=-1,epsilon=1e-7,use_running_average=not training)(y)
 
@@ -495,10 +497,10 @@ class CNN2D_MAPTAF(nn.Module):
                 y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
 
             if self.BatchNorm == 1:
-                rgb = y.shape[1:]
-                y = y.reshape(y.shape[0],-1)
-                y = nn.LayerNorm(use_bias=True,use_scale=True)(y)
-                y = y.reshape(y.shape[0],*rgb)
+                # rgb = y.shape[1:]
+                # y = y.reshape(y.shape[0],-1)
+                y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+                # y = y.reshape(y.shape[0],*rgb)
 
             # y = y + sigma*jax.random.normal(jax.random.PRNGKey(1),y.shape)
             # y = nn.relu(y)
@@ -513,10 +515,10 @@ class CNN2D_MAPTAF(nn.Module):
                 y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
 
             if self.BatchNorm == 1:
-                rgb = y.shape[1:]
-                y = y.reshape(y.shape[0],-1)
-                y = nn.LayerNorm(use_bias=True,use_scale=True)(y)
-                y = y.reshape(y.shape[0],*rgb)
+                # rgb = y.shape[1:]
+                # y = y.reshape(y.shape[0],-1)
+                y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+                # y = y.reshape(y.shape[0],*rgb)
 
             # y = y + sigma*jax.random.normal(jax.random.PRNGKey(1),y.shape)
             # y = nn.relu(y)
@@ -527,10 +529,10 @@ class CNN2D_MAPTAF(nn.Module):
             y = nn.Conv(features=self.chan4_n, kernel_size=(self.filt4_size,self.filt4_size),padding='SAME', kernel_init=glorot_uniform())(y)
            
             if self.BatchNorm == 1:
-                rgb = y.shape[1:]
-                y = y.reshape(y.shape[0],-1)
-                y = nn.LayerNorm(use_bias=True,use_scale=True)(y)
-                y = y.reshape(y.shape[0],*rgb)
+                # rgb = y.shape[1:]
+                # y = y.reshape(y.shape[0],-1)
+                y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+                # y = y.reshape(y.shape[0],*rgb)
                 
             # y = y + sigma*jax.random.normal(jax.random.PRNGKey(1),y.shape)
             # y = nn.relu(y)
@@ -538,21 +540,21 @@ class CNN2D_MAPTAF(nn.Module):
 
 
         
-        rgb = y.shape[1:]
-        y = y.reshape(y.shape[0],-1)
-        y = nn.LayerNorm(use_bias=True,use_scale=True)(y)
-        y = y.reshape(y.shape[0],*rgb)
+        # rgb = y.shape[1:]
+        # y = y.reshape(y.shape[0],-1)
+        y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+        # y = y.reshape(y.shape[0],*rgb)
 
         y = nn.Conv(features=self.nout, kernel_size=(1,1),padding='SAME', kernel_init=he_normal(),name='output')(y)
         
-        rgb = y.shape[1:]
-        y = y.reshape(y.shape[0],-1)
-        y = nn.LayerNorm(use_bias=True,use_scale=True)(y)
-        y = y.reshape(y.shape[0],*rgb)
+        # rgb = y.shape[1:]
+        # y = y.reshape(y.shape[0],-1)
+        y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+        # y = y.reshape(y.shape[0],*rgb)
 
         # outputs = nn.softplus(y)
         outputs = TrainableAF()(y)
-        outputs = nn.relu(outputs)
+        # outputs = nn.relu(outputs)
 
         self.sow('intermediates', 'dense_activations', outputs)
 
