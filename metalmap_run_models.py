@@ -523,7 +523,8 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     
     if lrscheduler == 'exponential_decay':
         # lr_schedule = optax.exponential_decay(init_value=lr,transition_steps=n_batches*1,decay_rate=0.75,staircase=True,transition_begin=0)
-        lr_schedule = optax.exponential_decay(init_value=lr,transition_steps=10000,decay_rate=0.75,staircase=True,transition_begin=0,end_value=1e-8)
+        transition_steps = 20000
+        lr_schedule = optax.exponential_decay(init_value=lr,transition_steps=transition_steps,decay_rate=0.75,staircase=True,transition_begin=0,end_value=1e-7)
 
     
     elif lrscheduler == 'warmup_exponential_decay':
@@ -725,7 +726,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     
 # %% Train model metalzero
     if runOnCluster==0:
-        cp_interval = 50
+        cp_interval = 25
     else:
         ncps_perEpoch = 25
         cp_interval = model.utils_si.round_to_even(n_batches/ncps_perEpoch)
@@ -854,7 +855,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         print('-----EVALUATING PERFORMANCE-----')
         i=nb_cps-1
         for i in range(0,nb_cps-1):
-            print('evaluating checkpoint %d of %d'%(i,nb_cps))
+            print('evaluating checkpoint %d of %d | Step %d'%(i,nb_cps,step_numbers[i]))
             # weight_file = 'weights_'+fname_model+'_epoch-%03d.h5' % (i+1)
             weight_fold = 'step-%03d' % step_numbers[i]  # 'file_name_{}_{:.03f}.png'.format(f_nm, val)
             weight_file = os.path.join(path_model_save,weight_fold)

@@ -50,6 +50,9 @@ elif LOSS_FUN=='poissonreg':
     loss_fun=2
 elif LOSS_FUN=='madpoissonreg':
     loss_fun=3
+elif LOSS_FUN=='mad':
+    loss_fun=4
+
 
 
 def to_cpu(grads):
@@ -176,12 +179,19 @@ def calc_loss(y_pred,y,coords,segment_size,N_tr,mask_tr):
     # y_pred_units = jnp.where(y_pred_units == 0, 1e-6, y_pred_units)
     if loss_fun==1:
         loss = y_pred_units-y_units*jax.lax.log(y_pred_units)
+    elif loss_fun==2:
+        poisson_loss = y_pred_units-y_units*jax.lax.log(y_pred_units)
+        reg_loss = 1e-1*y_pred_units
+        loss = poisson_loss+reg_loss
     elif loss_fun==3:
         poisson_loss = y_pred_units-y_units*jax.lax.log(y_pred_units)
         mad_loss = jnp.abs(y_units-y_pred_units)
         reg_loss = 1e-1*y_pred_units
-
         loss = poisson_loss+mad_loss+reg_loss
+        
+    elif loss_fun==4:
+        loss = jnp.abs(y_units-y_pred_units)
+
 
     loss = (loss*mask_tr[None,:])
     loss=jnp.nansum(loss)/(N_tr*loss.shape[0])
@@ -932,6 +942,7 @@ def train_step(mdl_state,weights_output,config,training_params,dataloader_train,
         ctr_batch=-1
         ctr_batch_master = -1
         t_dl = time.time()
+        loss_step_train=[]
         for batch_train in dataloader_train:
             ctr_step = ctr_step+1
 
@@ -950,27 +961,30 @@ def train_step(mdl_state,weights_output,config,training_params,dataloader_train,
             t_tr = time.time()-t_tr
             t_other = time.time()
             loss_batch_train.append(loss)
+            loss_step_train.append(loss)
             # if ctr_batch_master==0 or ctr_batch==10:
             #     ctr_batch=0
             # else:
                 
             # gc.collect()
             t_other = time.time()-t_other
-            pbar.set_postfix({"Epoch": epoch, "Loss": f"{loss:.2f}", "LR": f"{np.array(current_lr):.3E}"})
-            pbar.update(1)
+            # pbar.set_postfix({"Epoch": epoch, "Loss": f"{loss:.2f}", "LR": f"{np.array(current_lr):.3E}"})
+            print('Epoch %d | Loss: %0.2f | LR: %0.3E'%(epoch,loss,np.array(current_lr)))
 
+            pbar.update(1)
+            
             
             if ctr_step%training_params['cp_interval']==0 or ctr_step%n_batches==0:         # Save if either cp interval reached or end of epoch reached
                 # print('Epoch %d | Loss: %0.2f | LR: %0.3E'%(epoch,loss,np.array(current_lr)))
                 grads_cpu = to_cpu(grads)
                 del grads
 
-                aux = dict(loss_batch_train=np.array(loss_batch_train),grads=grads_cpu)
+                aux = dict(loss_batch_train=np.array(loss_step_train),grads=grads_cpu)
                 # t=time.time()
                 if save == True:
                     fname_cp = os.path.join(path_model_save,'step-%03d'%ctr_step)
                     save_epoch(mdl_state,config,weights_output,fname_cp,aux=aux)
-                    loss_batch_train = []
+                    loss_step_train = []
                     
                 # elap = time.time()-t
                 # print('File saving time: %f mins',elap/60)
