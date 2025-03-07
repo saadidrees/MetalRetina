@@ -968,8 +968,8 @@ def train_step(mdl_state,weights_output,config,training_params,dataloader_train,
                 
             # gc.collect()
             t_other = time.time()-t_other
-            # pbar.set_postfix({"Epoch": epoch, "Loss": f"{loss:.2f}", "LR": f"{np.array(current_lr):.3E}"})
-            print('Epoch %d | Loss: %0.2f | LR: %0.3E'%(epoch,loss,np.array(current_lr)))
+            pbar.set_postfix({"Epoch": epoch, "Loss": f"{loss:.2f}", "LR": f"{np.array(current_lr):.3E}"})
+            # print('Epoch %d | Loss: %0.2f | LR: %0.3E'%(epoch,loss,np.array(current_lr)))
 
             pbar.update(1)
             
