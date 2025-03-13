@@ -43,15 +43,7 @@ import re
 
 MAX_RGCS = 500
 
-LOSS_FUN = 'poisson'
-if LOSS_FUN=='poisson':
-    loss_fun=1
-elif LOSS_FUN=='poissonreg':
-    loss_fun=2
-elif LOSS_FUN=='madpoissonreg':
-    loss_fun=3
-elif LOSS_FUN=='mad':
-    loss_fun=4
+LOSS_FUN = 'mad'        # poisson poissonreg madpoissonreg mad  madreg  msereg
 
 
 
@@ -177,20 +169,31 @@ def calc_loss(y_pred,y,coords,segment_size,N_tr,mask_tr):
     y_pred_units = jnp.where(y_pred_units == 0, 1e-6, y_pred_units)
 
     # y_pred_units = jnp.where(y_pred_units == 0, 1e-6, y_pred_units)
-    if loss_fun==1:
+    if LOSS_FUN=='poisson':
         loss = y_pred_units-y_units*jax.lax.log(y_pred_units)
-    elif loss_fun==2:
+    elif LOSS_FUN=='poissonreg':
         poisson_loss = y_pred_units-y_units*jax.lax.log(y_pred_units)
         reg_loss = 1e-1*y_pred_units
         loss = poisson_loss+reg_loss
-    elif loss_fun==3:
+    elif LOSS_FUN=='madpoissonreg':
         poisson_loss = y_pred_units-y_units*jax.lax.log(y_pred_units)
         mad_loss = jnp.abs(y_units-y_pred_units)
         reg_loss = 1e-1*y_pred_units
         loss = poisson_loss+mad_loss+reg_loss
-        
-    elif loss_fun==4:
+    elif LOSS_FUN=='mad':
         loss = jnp.abs(y_units-y_pred_units)
+    elif LOSS_FUN=='madreg':
+        mad_loss = jnp.abs(y_units-y_pred_units)
+        reg_loss = 1e-2*y_pred_units
+        loss = mad_loss+reg_loss
+    elif LOSS_FUN=='msereg':
+        loss = (y_units-y_pred_units)**2
+        reg_loss = 1e-2*y_pred_units
+        loss = loss+reg_loss
+
+    else:
+        raise Exception('Loss Function Not Found')
+
 
 
     loss = (loss*mask_tr[None,:])
@@ -642,10 +645,11 @@ def save_epoch(state,config,weights_output,fname_cp,weights_all=None,aux=None):
     save_args = orbax_utils.save_args_from_target(ckpt)
     orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
     orbax_checkpointer.save(fname_cp, ckpt, save_args=save_args)
-    fname_weights_output = os.path.join(fname_cp,'weights_output.h5')
-    with h5py.File(fname_weights_output,'w') as f:
-        f.create_dataset('weights_output_kernel',data=np.array(weights_output[0],dtype='float32'),compression='gzip')
-        f.create_dataset('weights_output_bias',data=np.array(weights_output[1],dtype='float32'),compression='gzip')
+    if len(weights_output)>0:
+        fname_weights_output = os.path.join(fname_cp,'weights_output.h5')
+        with h5py.File(fname_weights_output,'w') as f:
+            f.create_dataset('weights_output_kernel',data=np.array(weights_output[0],dtype='float32'),compression='gzip')
+            f.create_dataset('weights_output_bias',data=np.array(weights_output[1],dtype='float32'),compression='gzip')
 
     if weights_all!=None:
         fname_weights_all = os.path.join(fname_cp,'weights_all.h5')
@@ -1048,6 +1052,232 @@ def train_step(mdl_state,weights_output,config,training_params,dataloader_train,
     return loss_currEpoch_master,loss_epoch_train,loss_epoch_val,mdl_state,weights_output,fev_epoch_train,fev_epoch_val
 
 
+# %% Finetuning
+
+@jax.jit
+def ft_task_loss(state,trainable_params,fixed_params,batch,coords,N_tr,segment_size,mask_tr):
+    """
+    fixed_params = ft_params_fixed
+    trainable_params = ft_mdl_state.params
+    batch=batch_train
+    state=ft_mdl_state
+    coords=dinf_tr['umaskcoords_trtr']
+    N_tr = dinf_tr['N_trtr']
+    segment_size = dinf_tr['segment_size']
+    mask_tr = dinf_tr['maskunits_trtr']
+    """
+    X,y = batch
+    y_pred,state = state.apply_fn({'params': {**fixed_params, **trainable_params}},X,training=True,mutable=['intermediates'])
+    intermediates = state['intermediates']
+    dense_activations = intermediates['dense_activations'][0]
+
+    # if training==True:
+    loss,y_units,y_pred_units = calc_loss(y_pred,y,coords,segment_size,N_tr,mask_tr)
+    loss = loss + weight_regularizer(trainable_params,alpha=1e-3)
+    return loss,y_pred
+
+@jax.jit
+def ft_train_step(state,fixed_params,batch,coords,N_tr,segment_size,mask_tr):
+    
+    grad_fn = jax.value_and_grad(ft_task_loss,argnums=1,has_aux=True)
+    (loss,y_pred),grads = grad_fn(state,state.params,fixed_params,batch,coords,N_tr,segment_size,mask_tr)
+    grads = clip_grads(grads)
+    state = state.apply_gradients(grads=grads)
+    
+    return state,loss,grads
+
+def ft_eval_step(state,ft_params_fixed,batch_val,dinf_batch_val,n_batches=1e5):
+    """
+    idx_task = idx_valdset
+    N_val = dinf_batch_val['N_val']
+    mask_val = dinf_batch_val['maskunits_val']
+    coords = dinf_batch_val['umaskcoords_val']
+    segment_size =  dinf_batch_val['segment_size']
+    
+    """
+    N_val = dinf_batch_val['N_val']
+    mask_val = dinf_batch_val['maskunits_val']
+    coords = dinf_batch_val['umaskcoords_val']
+    segment_size =  dinf_batch_val['segment_size']
+
+    if type(batch_val) is tuple:
+        X,y = batch_val
+        y_pred = state.apply_fn({'params': {**state.params,**ft_params_fixed}},X,training=True)
+        # loss,y_pred = task_loss_eval(state,state.params,data)
+        loss,y_units,y_pred_units = calc_loss(y_pred,y,coords,segment_size,N_val,mask_val)
+        y_units  = y_units[:,:N_val]
+        y_pred_units = y_pred_units[:,:N_val]
+        
+        
+        # return loss,y_pred,y,y_pred_units,y_units
+    
+    else:       # if the data is in dataloader format
+        batch = next(iter(batch_val))
+        y_shape = (*batch[0].shape[-2:],2)
+        y_pred_units = jnp.empty((0,N_val))
+        y_units = jnp.empty((0,N_val))
+        y_pred = jnp.empty((0,*y_shape))
+        y = jnp.empty((0,*y_shape))
+
+        loss = []
+        count_batch = 0
+        # batch = next(iter(batch_val))
+        for batch in batch_val:
+            if count_batch<n_batches:
+                X_batch,y_batch = batch
+                y_pred_batch = state.apply_fn({'params': {**state.params,**ft_params_fixed}},X_batch,training=True)
+                loss_batch,y_units_b,y_pred_units_b = calc_loss(y_pred_batch,y_batch,coords,segment_size,N_val,mask_val)
+                y_units_b = y_units_b[:,:N_val]
+                y_pred_units_b = y_pred_units_b[:,:N_val]
+                
+                loss.append(loss_batch)
+                y_pred = jnp.concatenate((y_pred,y_pred_batch),axis=0)
+                if jnp.ndim(y_batch) != jnp.ndim(y_pred_batch):     # MEaning that resp format is individual units
+                    y_batch = generate_activity_map(coords,y_batch,N_val,frame_size=y_pred_batch.shape[1:3])
+                y = jnp.concatenate((y,y_batch),axis=0)
+                y_pred_units = jnp.concatenate((y_pred_units,y_pred_units_b),axis=0)
+                y_units = jnp.concatenate((y_units,y_units_b),axis=0)
+
+                count_batch+=1
+            else:
+                break
+    return loss,y_pred,y,y_pred_units,y_units
+
+
+def ft_train(ft_mdl_state,ft_params_fixed,config,training_params,dataloader_train,dataloader_val,dinf_tr,dinf_val,nb_epochs,ft_path_model_save,save=False,lr_schedule=None,step_start=0,idx_valdset=0):
+    """
+    RESP_FORMAT='MAPS'
+    RESP_FORMAT='UNITS'
+
+    """
+    print('Training scheme: Finetuning')
+    save = True
+    step_start=0
+    
+    
+    # learning_rate_fn = create_learning_rate_scheduler(lr_schedule)
+    
+    loss_epoch_train = []
+    loss_epoch_val = []
+    
+    loss_batch_train = []
+    loss_batch_val = []
+    
+    fev_epoch_train = []
+    fev_epoch_val = []
+
+    dinf_batch_valtr = dict(N_val=dinf_tr['N_trtr'],
+                            maskunits_val=dinf_tr['maskunits_trtr'],
+                            umaskcoords_val=dinf_tr['umaskcoords_trtr'],
+                            segment_size=dinf_tr['segment_size'])
+
+    n_batches = len(dataloader_train)
+    print('Total batches: %d'%n_batches)
+    epoch=0
+    steps_total = nb_epochs*n_batches
+    pbar = tqdm(total=steps_total, desc="Processing Steps")  # Initialize progress bar
+    
+    
+    # cp_interval=training_params['cp_interval']
+
+    ctr_step = 0
+    step=0
+    for epoch in range(step_start,nb_epochs):
+        _ = gc.collect()
+        loss_batch_train=[]
+        # batch_train = next(iter(dataloader_train)); batch=batch_train; 
+        ctr_batch=-1
+        ctr_batch_master = -1
+        t_dl = time.time()
+        loss_step_train=[]
+        for batch_train in dataloader_train:
+            ctr_step = ctr_step+1
+
+            ctr_batch = ctr_batch+1
+            ctr_batch_master=ctr_batch_master+1
+            
+            current_lr = lr_schedule(ft_mdl_state.step)     
+            
+            t_tr=time.time()
+            ft_mdl_state,loss,grads = ft_train_step(ft_mdl_state,ft_params_fixed,batch_train,
+                                                                dinf_tr['umaskcoords_trtr'],dinf_tr['N_trtr'],dinf_tr['segment_size'],dinf_tr['maskunits_trtr'])
+                
+            loss_batch_train.append(loss)
+            loss_step_train.append(loss)
+            pbar.set_postfix({"Epoch": epoch, "Loss": f"{loss:.2f}", "LR": f"{np.array(current_lr):.3E}"})
+            pbar.update(1)
+
+            # print('Epoch %d | Loss: %0.2f | LR: %0.3E'%(epoch,loss,np.array(current_lr)))
+
+            
+            
+            if ctr_step%training_params['cp_interval']==0 or ctr_step%n_batches==0:         # Save if either cp interval reached or end of epoch reached
+            
+                # print('Epoch %d | Loss: %0.2f | LR: %0.3E'%(epoch,loss,np.array(current_lr)))
+                grads_cpu = to_cpu(grads)
+                del grads
+
+                aux = dict(loss_batch_train=np.array(loss_step_train),grads=grads_cpu)
+                # t=time.time()
+                if save == True:
+                    weights_output=[]
+                    fname_cp = os.path.join(ft_path_model_save,'step-%03d'%ctr_step)
+                    save_epoch(ft_mdl_state,config,weights_output,fname_cp,aux=aux)
+                    loss_step_train = []
+                    
+                # elap = time.time()-t
+                # print('File saving time: %f mins',elap/60)
+
+
+
+        # assert jnp.sum(grads['Conv_0']['kernel']) != 0, 'Gradients are Zero'
+        
+        print('Finished training on batch')
+        print('Gonna start ealuating the batch')
+        _=gc.collect()
+        # For validation, update the new state with weights from the idx_valdset task            
+    
+        loss_batch_val = []
+        # batch = next(iter(dataloader_val))
+        # t = time.time()
+        loss_batch_val,y_pred,y,y_pred_val_units,y_val_units = ft_eval_step(ft_mdl_state,ft_params_fixed,dataloader_val,dinf_val)
+        
+        # elap = time.time()-t
+        # print('Val time: %f',elap)
+
+        # t = time.time()
+        loss_batch_train_test,y_pred_train,y_train,y_pred_train_units,y_train_units = ft_eval_step(ft_mdl_state,ft_params_fixed,(batch_train[0],batch_train[1]),dinf_batch_valtr)
+        
+        loss_currEpoch_master = np.mean(loss_batch_train)
+        loss_currEpoch_train = np.mean(loss_batch_train_test)
+        loss_currEpoch_val = np.mean(loss_batch_val)
+    
+        loss_epoch_train.append(np.mean(loss_currEpoch_train))
+        loss_epoch_val.append(np.mean(loss_currEpoch_val))
+        
+        current_lr = lr_schedule(ft_mdl_state.step)
+        
+        temporal_width_eval = batch_train[0].shape[1]
+        fev_val,_,predCorr_val,_ = model_evaluate_new(y_val_units,y_pred_val_units,temporal_width_eval,lag=0,obs_noise=0)
+        fev_val_med,predCorr_val_med = np.median(fev_val),np.median(predCorr_val)
+        fev_train,_,predCorr_train,_ = model_evaluate_new(y_train_units,y_pred_train_units,temporal_width_eval,lag=0,obs_noise=0)
+        fev_train_med,predCorr_train_med = np.median(fev_train),np.median(predCorr_train)
+        
+        fev_epoch_train.append(fev_train_med)
+        fev_epoch_val.append(fev_val_med)
+
+        print('Epoch: %d, train_loss: %.2f, fev: %.2f, corr: %.2f || val_loss: %.2f, fev: %.2f, corr: %.2f || lr: %.2e'\
+              %(epoch+1,loss_currEpoch_master,fev_train_med,predCorr_train_med,loss_currEpoch_val,fev_val_med,predCorr_val_med,current_lr))
+        
+            
+        # fig,axs = plt.subplots(2,1,figsize=(20,10));axs=np.ravel(axs);fig.suptitle('Epoch: %d'%(epoch+1))
+        # axs[0].plot(y_train_units[:200,2]);axs[0].plot(y_pred_train_units[:200,10]);axs[0].set_title('Train')
+        # axs[1].plot(y_units[:,10]);axs[1].plot(y_pred_units[:,10]);axs[1].set_title('Validation')
+        # plt.show()
+        # plt.close()
+        
+
+    return loss_currEpoch_master,loss_epoch_train,loss_epoch_val,ft_mdl_state,fev_epoch_train,fev_epoch_val
 
 # %% Recycle
 # @jax.jit

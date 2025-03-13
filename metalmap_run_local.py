@@ -22,11 +22,11 @@ base = '/home/saad/data/'
 
 
 data_pers = 'ej'
-expDate = ('trainList_test',) #('trainList_20241115a',)
+expDate = ('20250313_R-55_D-0.91_TR-00_trainlist',) #('trainList_20241115M',)
 
 APPROACH = 'metalzero' 
 expFold = APPROACH 
-subFold = 'test'
+subFold = 'testnumrets'
 dataset = 'CB_mesopic_f4_8ms_sig-4'#'NATSTIM6_CORR2_mesopic-Rstar_f4_8ms',)#'NATSTIM3_CORR_mesopic-Rstar_f4_8ms  CB_CORR_mesopic-Rstar_f4_8ms
 idx_unitsToTake = 0#np.arange(0,230) #np.array([0,1,2,3,4,5,6,7,8,9])
 frac_train_units = 0.95
@@ -34,7 +34,7 @@ frac_train_units = 0.95
 #np.arange(0,50)#idx_units_ON_train #[0] #idx_units_train
 select_rgctype=0
 mdl_subFold = ''
-mdl_name = 'CNN2D_MAP' 
+mdl_name = 'CNN2D_MAP2' 
 pr_params_name = ''
 path_existing_mdl = ''
 transfer_mode = ''
@@ -43,17 +43,17 @@ idxStart_fixedLayers = 0#1
 idxEnd_fixedLayers = -1#15   #29 dense; 28 BN+dense; 21 conv+dense; 15 second conv; 8 first conv
 CONTINUE_TRAINING = 0
 
-lr = 0.00001
+lr = 0.001
 lr_fac = 1# how much to divide the learning rate when training is resumed
 use_lrscheduler=1
-lrscheduler='constant' #'exponential_decay' #dict(scheduler='stepLR',drop=0.01,steps_drop=20,initial_lr=lr)
+lrscheduler='exponential_decay' #'exponential_decay' #dict(scheduler='stepLR',drop=0.01,steps_drop=20,initial_lr=lr)
 USE_CHUNKER=1
 pr_temporal_width = 0
-temporal_width=60
+temporal_width=70
 thresh_rr=0
 chans_bp = 0
 chan1_n=64#15
-filt1_size=3
+filt1_size=5
 filt1_3rdDim=0
 chan2_n=64#30
 filt2_size=3
@@ -64,16 +64,16 @@ filt3_3rdDim=0
 chan4_n=128#50
 filt4_size=3
 filt4_3rdDim=0
-nb_epochs=10#42         # setting this to 0 only runs evaluation
-bz_ms=2#64#10000#5000
+nb_epochs=2#42         # setting this to 0 only runs evaluation
+bz_ms=4#64#10000#5000
 BatchNorm=1
-MaxPool=2
+MaxPool=0
 runOnCluster=0
 num_trials=1
 
 BatchNorm_train = 1
 saveToCSV=1
-trainingSamps_dur = 1#1#20 #-1 #0.05 # minutes per dataset
+trainingSamps_dur = 0.91#1#20 #-1 #0.05 # minutes per dataset
 validationSamps_dur=0.5
 testSamps_dur=0.5
 USE_WANDB = 0
@@ -81,7 +81,7 @@ USE_WANDB = 0
 
 
 dataset_nameForPaths = ''
-if 'trainList' in expDate[0]:
+if 'list' in expDate[0]:
     dataset_nameForPaths = expDate[0]
 else:
     for i in range(len(expDate)):
@@ -89,12 +89,12 @@ else:
     dataset_nameForPaths = dataset_nameForPaths[:-1]
 
     
-path_model_save_base = os.path.join(base,'analyses/data_'+data_pers+'/','models',subFold,expFold,dataset_nameForPaths,mdl_subFold)
+path_model_save_base = os.path.join(base,'analyses/data_'+data_pers+'/','models',subFold,mdl_subFold)
 path_dataset_base = os.path.join('/home/saad/postdoc_db/analyses/data_'+data_pers+'/')
 
-
-if 'trainList' in expDate[0]:
-    fname_data_train_val_test = os.path.join(path_dataset_base,'datasets',expDate[0]+'.txt')
+datasetfiles_fold='datasets/datasets_numrets'
+if 'list' in expDate[0]:
+    fname_data_train_val_test = os.path.join(path_dataset_base,datasetfiles_fold,expDate[0]+'.txt')
 else:
     fname_data_train_val_test = ''
     i=0

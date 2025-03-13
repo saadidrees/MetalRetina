@@ -152,7 +152,10 @@ def modelFileName(U=0,P=0,T=0,CB_n=0,C1_n=0,C1_s=0,C1_3d=0,C2_n=0,C2_s=0,C2_3d=0
         
         
     if with_TRSAMPS==True:
-        TRSAMPS = '%03d'%TRSAMPS
+        if TRSAMPS<1:
+            TRSAMPS = '%0.2f'%TRSAMPS
+        else:
+            TRSAMPS = '%03d'%TRSAMPS
         fname = parse_param('TRSAMPS',TRSAMPS,fname)    
 
     if with_TR==True:

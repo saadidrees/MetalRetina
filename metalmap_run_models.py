@@ -523,8 +523,8 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     
     if lrscheduler == 'exponential_decay':
         # lr_schedule = optax.exponential_decay(init_value=lr,transition_steps=n_batches*1,decay_rate=0.75,staircase=True,transition_begin=0)
-        transition_steps = 20000
-        lr_schedule = optax.exponential_decay(init_value=lr,transition_steps=transition_steps,decay_rate=0.75,staircase=True,transition_begin=0,end_value=1e-7)
+        transition_steps = 20000# 20000
+        lr_schedule = optax.exponential_decay(init_value=lr,transition_steps=transition_steps,decay_rate=0.5,staircase=True,transition_begin=0,end_value=1e-7)
 
     
     elif lrscheduler == 'warmup_exponential_decay':
@@ -726,9 +726,9 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     
 # %% Train model metalzero
     if runOnCluster==0:
-        cp_interval = 25
+        cp_interval = 100
     else:
-        ncps_perEpoch = 25
+        ncps_perEpoch = 5
         cp_interval = model.utils_si.round_to_even(n_batches/ncps_perEpoch)
 
         
