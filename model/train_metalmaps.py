@@ -46,7 +46,6 @@ MAX_RGCS = 500
 LOSS_FUN = 'mad'        # poisson poissonreg madpoissonreg mad  madreg  msereg
 
 
-
 def to_cpu(grads):
     return jax.tree_map(lambda g: np.asarray(g),grads)
 
@@ -921,7 +920,7 @@ def train_step(mdl_state,weights_output,config,training_params,dataloader_train,
     fev_epoch_train = []
     fev_epoch_val = []
 
-    idx_valdset = 2#7
+    idx_valdset = 0#7
     dinf_batch_val = jax.tree_map(lambda x: x[idx_valdset] if isinstance(x, np.ndarray) else x, dinf_val)
     dinf_batch_valtr = dict(N_val=dinf_tr['N_trtr'][idx_valdset],
                             maskunits_val=dinf_tr['maskunits_trtr'][idx_valdset],
@@ -1211,7 +1210,7 @@ def ft_train(ft_mdl_state,ft_params_fixed,config,training_params,dataloader_trai
 
             
             
-            if ctr_step%training_params['cp_interval']==0 or ctr_step%n_batches==0:         # Save if either cp interval reached or end of epoch reached
+            if ctr_step%training_params['cp_interval']==0 or ctr_step%n_batches==0 or ctr_step==1:         # Save if either cp interval reached or end of epoch reached
             
                 # print('Epoch %d | Loss: %0.2f | LR: %0.3E'%(epoch,loss,np.array(current_lr)))
                 grads_cpu = to_cpu(grads)
