@@ -153,15 +153,17 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     else:
         fname_data_train_val_test_all = fname_data_train_val_test.split('+')
         expDates = []
+        trainList = ''
         for i in range(len(fname_data_train_val_test_all)):
             rgb = os.path.split(fname_data_train_val_test_all[i])[-1]
             a = re.match(r"^(.*?)_dataset", rgb)
             expDates.append(a.group(1))
+            trainList = trainList+'+'+a.group(1)
+        trainList=trainList[1:]
+        
 
     
-    
-    # if type(expDates)=='str'
-    
+        
     # Get the total num of samples and RGCs in each dataset
     nsamps_alldsets = []
     num_rgcs_all = []
