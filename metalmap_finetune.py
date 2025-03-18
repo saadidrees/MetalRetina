@@ -336,6 +336,7 @@ def run_finetune(ft_expDate,path_pretrained,ft_fname_data_train_val_test,ft_mdl_
     print('Loaded pre-trained model')
     
     # %% Create FT Model
+    initial_epoch=0
     LOSS_FUN = model.train_metalmaps.LOSS_FUN
     ft_fname_model,ft_model_params = model.utils_si.modelFileName(U=nrgcs_trtr,P=0,T=temporal_width,CB_n=0,
                                                         C1_n=pretrained_params['C1_n'],C1_s=pretrained_params['C1_s'],C1_3d=pretrained_params['C1_3d'],
