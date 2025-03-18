@@ -77,15 +77,15 @@ def arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf
     # dinf,data_train,data_val = remove_boundary_units(dinf,data_train,data_val)  # This step is already done in dataset creation stage
     
     if NORMALIZE_RESP==1:
-        if MODE=='validation':
-            rgb = data_val.y
-            max_resp = np.max(rgb,axis=0)
-            data_val = normalize_responses(data_val,max_resp)
-        else:
-            rgb = np.concatenate((data_train.y,data_val.y),axis=0)
-            max_resp = np.max(rgb,axis=0)
-            data_train = normalize_responses(data_train,max_resp)
-            data_val = normalize_responses(data_val,max_resp)
+        # if MODE=='validation':
+        #     rgb = data_val.y
+        #     max_resp = np.max(rgb,axis=0)
+        #     data_val = normalize_responses(data_val,max_resp)
+        # else:
+        rgb = np.concatenate((data_train.y,data_val.y),axis=0)
+        max_resp = np.max(rgb,axis=0)
+        data_train = normalize_responses(data_train,max_resp)
+        data_val = normalize_responses(data_val,max_resp)
 
     
     if (info_unitSplit==None and frac_train_units==1) or MODE=='validation':

@@ -1179,7 +1179,7 @@ def ft_train(ft_mdl_state,ft_params_fixed,config,training_params,dataloader_trai
     
     # cp_interval=training_params['cp_interval']
 
-    ctr_step = 0
+    ctr_step = training_params['cp_interval']*step_start
     step=0
     for epoch in range(step_start,nb_epochs):
         _ = gc.collect()
@@ -1231,8 +1231,6 @@ def ft_train(ft_mdl_state,ft_params_fixed,config,training_params,dataloader_trai
 
         # assert jnp.sum(grads['Conv_0']['kernel']) != 0, 'Gradients are Zero'
         
-        print('Finished training on batch')
-        print('Gonna start ealuating the batch')
         _=gc.collect()
         # For validation, update the new state with weights from the idx_valdset task            
     

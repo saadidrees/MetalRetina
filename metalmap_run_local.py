@@ -22,12 +22,12 @@ base = '/home/saad/data/'
 
 
 data_pers = 'ej'
-expDate = ('20250313_R-55_D-0.91_TR-00_trainlist',) #('trainList_20241115M',)
+expDate = ('2007-08-21-5',) #('20250313_R-55_D-0.91_TR-00_trainlist',) #('trainList_20241115M',)
 
 APPROACH = 'metalzero' 
 expFold = APPROACH 
 subFold = 'testnumrets'
-dataset = 'CB_mesopic_f4_8ms_sig-4'#'NATSTIM6_CORR2_mesopic-Rstar_f4_8ms',)#'NATSTIM3_CORR_mesopic-Rstar_f4_8ms  CB_CORR_mesopic-Rstar_f4_8ms
+dataset = 'CB_mesopic_f4_8ms_sig-4_MAPS'#'NATSTIM6_CORR2_mesopic-Rstar_f4_8ms',)#'NATSTIM3_CORR_mesopic-Rstar_f4_8ms  CB_CORR_mesopic-Rstar_f4_8ms
 idx_unitsToTake = 0#np.arange(0,230) #np.array([0,1,2,3,4,5,6,7,8,9])
 frac_train_units = 0.95
 
