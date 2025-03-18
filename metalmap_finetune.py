@@ -47,10 +47,7 @@ def run_finetune(ft_expDate,path_pretrained,ft_fname_data_train_val_test,ft_mdl_
     from torch.utils.data import DataLoader
     
     from model.performance import getModelParams
-    
-    
-    import seaborn as snb
-    
+        
     Exptdata = namedtuple('Exptdata', ['X', 'y'])
     Exptdata_spikes = namedtuple('Exptdata', ['X', 'y','spikes'
                                               ])
@@ -619,9 +616,21 @@ if __name__ == "__main__":
     
     
     # %% Parameter changes
-    """
+
     # def compute_relative_changes(original_params, finetuned_params):
     #     param_changes = jax.tree_map(lambda a,b: jnp.linalg.norm(b-a)/jnp.linalg.norm(a), params_orig, params_final)
+                
+    #     return param_changes
+    
+    # def compute_relative_changes(original_params, finetuned_params):
+        
+    #     original_params = jax.tree_map(lambda a: jnp.reshape(a,(-1,a.shape[-1])),original_params)
+    #     finetuned_params = jax.tree_map(lambda a: jnp.reshape(a,(-1,a.shape[-1])),finetuned_params)
+        
+    #     changes = jax.tree_map(lambda a,b: jnp.sum(jnp.abs(a-b)),original_params,finetuned_params)
+    #     param_changes = jax.tree_map(lambda a,c: c/jnp.sum(jnp.abs(a)),original_params,changes)
+                                       
+    #     # param_changes = jax.tree_map(lambda a,b: jnp.linalg.norm(b-a)/jnp.linalg.norm(a), params_orig, params_final)
                 
     #     return param_changes
     
@@ -630,12 +639,13 @@ if __name__ == "__main__":
         original_params = jax.tree_map(lambda a: jnp.reshape(a,(-1,a.shape[-1])),original_params)
         finetuned_params = jax.tree_map(lambda a: jnp.reshape(a,(-1,a.shape[-1])),finetuned_params)
         
-        changes = jax.tree_map(lambda a,b: jnp.sum(jnp.abs(a-b)),original_params,finetuned_params)
-        param_changes = jax.tree_map(lambda a,c: c/jnp.sum(jnp.abs(a)),original_params,changes)
+        param_changes = jax.tree_map(lambda a,b: jnp.sum(jnp.linalg.norm(b-a)/jnp.linalg.norm(a)),original_params,finetuned_params)
+        # param_changes = jax.tree_map(lambda a,c: c/jnp.sum(jnp.abs(a)),original_params,changes)
                                        
         # param_changes = jax.tree_map(lambda a,b: jnp.linalg.norm(b-a)/jnp.linalg.norm(a), params_orig, params_final)
                 
         return param_changes
+
 
     
     def get_cpt_mdl(mdl_state,cpt=None):
@@ -701,6 +711,7 @@ if __name__ == "__main__":
     
     
     fig,axs=plt.subplots(3,2,figsize=(12,10))
+    fig.suptitle(ft_expDate)
     axs[0,0].plot(pval_conv_kernel,'-o')
     axs[0,0].set_ylabel('relative change')
     axs[0,0].set_title('Conv kernel')
