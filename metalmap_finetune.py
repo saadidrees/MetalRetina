@@ -615,8 +615,9 @@ if __name__ == "__main__":
     
     
     
+    
     # %% Parameter changes
-
+"""
     # def compute_relative_changes(original_params, finetuned_params):
     #     param_changes = jax.tree_map(lambda a,b: jnp.linalg.norm(b-a)/jnp.linalg.norm(a), params_orig, params_final)
                 
@@ -646,6 +647,18 @@ if __name__ == "__main__":
                 
         return param_changes
 
+    def compute_directional_changes(original_params, finetuned_params):
+        
+        original_params = jax.tree_map(lambda a: jnp.reshape(a, (-1, a.shape[-1])), original_params)
+        finetuned_params = jax.tree_map(lambda a: jnp.reshape(a, (-1, a.shape[-1])), finetuned_params)
+        
+        def cosine_similarity(a, b):
+            delta = b - a
+            return jnp.sum(jnp.dot(delta.flatten(), a.flatten())) / (jnp.linalg.norm(delta) * jnp.linalg.norm(a) + 1e-8)
+        
+        cosine_sims = jax.tree_map(cosine_similarity, original_params, finetuned_params)
+        
+        return cosine_sims
 
     
     def get_cpt_mdl(mdl_state,cpt=None):
@@ -675,6 +688,7 @@ if __name__ == "__main__":
     
     
     param_changes = compute_relative_changes(params_orig, params_final)
+    param_changes_dir = compute_directional_changes(params_orig, params_final)
     
     layer_order = ['Conv_0','LayerNorm_0','TrainableAF_0','Conv_1','LayerNorm_1','TrainableAF_1','Conv_2','LayerNorm_2','TrainableAF_2',
                        'Conv_3','LayerNorm_3','TrainableAF_3',
