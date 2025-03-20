@@ -738,7 +738,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     if runOnCluster==0:
         cp_interval = 100
     else:
-        ncps_perEpoch = 5
+        ncps_perEpoch = 1
         cp_interval = model.utils_si.round_to_even(n_batches/ncps_perEpoch)
 
         
