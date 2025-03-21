@@ -936,7 +936,7 @@ def train_step(mdl_state,weights_output,config,training_params,dataloader_train,
     
     # cp_interval=training_params['cp_interval']
 
-    ctr_step = 0
+    ctr_step = -1
     step=0
     for epoch in range(step_start,nb_epochs):
         _ = gc.collect()
@@ -977,7 +977,7 @@ def train_step(mdl_state,weights_output,config,training_params,dataloader_train,
             pbar.update(1)
             
             
-            if ctr_step%training_params['cp_interval']==0 or ctr_step%n_batches==0:         # Save if either cp interval reached or end of epoch reached
+            if ctr_step%training_params['cp_interval']==0:# or ctr_step%n_batches==0:         # Save if either cp interval reached or end of epoch reached
                 # print('Epoch %d | Loss: %0.2f | LR: %0.3E'%(epoch,loss,np.array(current_lr)))
                 grads_cpu = to_cpu(grads)
                 del grads
