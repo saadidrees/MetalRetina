@@ -21,7 +21,7 @@ def model_definitions():
         How to arrange the datasets depends on which model is being used
     """
     
-    models_2D = ('CNN2D','CNN2D_MAXPOOL','CNN2D_FT','CNN2D_FT2','CNN2D_LNORM','CNN2D_MAP','CNN2D_MAP2','CNN2D_MAPTAF')
+    models_2D = ('CNN2D','CNN2D_MAXPOOL','CNN2D_FT','CNN2D_FT2','CNN2D_LNORM','CNN2D_MAP','CNN2D_MAP2','CNN2D_MAP3')
     
     models_3D = ('CNN_3D','PR_CNN3D')
     
@@ -558,8 +558,84 @@ class CNN2D_MAP2(nn.Module):
 
         self.sow('intermediates', 'dense_activations', outputs)
 
-        return outputs    
+        return outputs 
     
+    
+class CNN2D_MAP3(nn.Module):
+    
+    chan1_n : int
+    filt1_size : int
+    chan2_n : int
+    filt2_size : int
+    chan3_n : int
+    filt3_size : int
+    chan4_n : int
+    filt4_size : int
+    nout : int    
+    filt_temporal_width : int    
+    BatchNorm : bool
+    MaxPool : int
+    # dtype : type
+    
+    # def __init__(self, **kwargs):
+    #     self.__dict__.update(kwargs)
+
+    @nn.compact
+    def __call__(self,inputs,training: bool,**kwargs):       
+        y = jnp.moveaxis(inputs,1,-1)       # Because jax is channels last
+        y = nn.Conv(features=self.chan1_n, kernel_size=(self.filt1_size,self.filt1_size),padding='SAME', kernel_init=glorot_uniform())(y)
+        
+        if self.MaxPool > 0:
+            y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
+
+        if self.BatchNorm == 1:
+            y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+        y = TrainableAF()(y)
+
+        
+        # second layer
+        if self.chan2_n>0:
+            y = nn.Conv(features=self.chan2_n, kernel_size=(self.filt2_size,self.filt2_size),padding='SAME', kernel_init=glorot_uniform())(y)
+            
+            if self.MaxPool > 0:
+                y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
+
+            if self.BatchNorm == 1:
+                y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+            y = TrainableAF()(y)
+
+
+        # Third layer
+        if self.chan3_n>0:
+            y = nn.Conv(features=self.chan3_n, kernel_size=(self.filt3_size,self.filt3_size),padding='SAME', kernel_init=glorot_uniform())(y)
+            
+            if self.MaxPool > 0:
+                y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
+
+            if self.BatchNorm == 1:
+                y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+
+            y = TrainableAF()(y)
+
+            
+        if self.chan4_n>0:
+            y = nn.Conv(features=self.chan4_n, kernel_size=(self.filt4_size,self.filt4_size),padding='SAME', kernel_init=glorot_uniform())(y)
+           
+            if self.BatchNorm == 1:
+                y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+                
+            y = TrainableAF()(y)
+        
+        y = nn.Conv(features=self.nout, kernel_size=(1,1),padding='SAME', kernel_init=he_normal(),name='output')(y)
+        
+        y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+
+        outputs = TrainableAF()(y)
+
+        self.sow('intermediates', 'dense_activations', outputs)
+
+        return outputs    
+        
     
 class TrainableAF(nn.Module):
     sat_init: float = 0.01
