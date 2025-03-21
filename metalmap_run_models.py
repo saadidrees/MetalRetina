@@ -736,7 +736,8 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     
 # %% Train model metalzero
     if runOnCluster==0:
-        cp_interval = 100
+        ncps_perEpoch = 1
+        cp_interval = model.utils_si.round_to_even(n_batches/ncps_perEpoch)
     else:
         ncps_perEpoch = 1
         cp_interval = model.utils_si.round_to_even(n_batches/ncps_perEpoch)
@@ -769,7 +770,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
 
     # with open(os.path.join(path_model_save,'model_architecture.pkl'), 'rb') as f:
     #     mdl,config = cloudpickle.load(f)
-    # orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+    orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
 
     bias_allSteps=[]; 
     for i in tqdm(range(nb_cps)):
