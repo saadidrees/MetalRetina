@@ -97,7 +97,7 @@ def run_finetune(ft_expDate,path_pretrained,ft_fname_data_train_val_test,ft_mdl_
     
     # Setting MODE to validation ensures that Only stim is different in Train/Val sets and same RGCs are used
     data_train,data_val,dinf = handler_maps.arrange_data_formaps(ft_expDate,data_train,data_val,parameters,frac_train_units,psf_params=psf_params,info_unitSplit=None,
-                                                                 BUILD_MAPS=BUILD_MAPS,MODE='validation')       
+                                                                 BUILD_MAPS=BUILD_MAPS,MODE='validation',NORMALIZE_RESP=1)       
     
     dinf['unit_locs_train'] = dinf['unit_locs'][dinf['idx_units_train']]
     dinf['unit_types_train'] = dinf['unit_types'][dinf['idx_units_train']]
@@ -422,14 +422,14 @@ def run_finetune(ft_expDate,path_pretrained,ft_fname_data_train_val_test,ft_mdl_
             initial_epoch = 0
         
 
-    
-    
     # %% Fine-tune the model
     
     val_loss,pred_rate,y,pred_rate_units,y_units = train_metalmaps.ft_eval_step(pre_mdl_state,ft_params_fixed,dataloader_val,dinf_val)
     val_loss = np.mean(val_loss)
     fev, fracExVar, predCorr, rrCorr = model_evaluate_new(y_units,pred_rate_units,temporal_width_eval,lag=0,obs_noise=0)
     print('Pre-trained perf | loss: %f, fev: %0.2f, Corr: %0.2f'%(np.mean(val_loss),np.median(fev),np.median(predCorr)))
+    pre_fev_val_allUnits_lastEpoch = fev
+    pre_corr_val_allUnits_lastEpoch = predCorr
     
     cp_interval = n_batches
     training_params['cp_interval'] = cp_interval
@@ -581,6 +581,10 @@ def run_finetune(ft_expDate,path_pretrained,ft_fname_data_train_val_test,ft_mdl_
     
     'ft_fev_val_allUnits_allEpochs': np.asarray(fev_allUnits_allEpochs),
     'ft_corr_val_allUnits_allEpochs': np.asarray(predCorr_allUnits_allEpochs),   
+    
+    'pre_fev_val_allUnits_lastEpoch': np.asarray(pre_fev_val_allUnits_lastEpoch),
+    'pre_corr_val_allUnits_lastEpoch': np.asarray(pre_corr_val_allUnits_lastEpoch),   
+
     'lr_schedule': rgb_lrs,
     'ft_lr': ft_lr,
     'ft_trainingSamps_dur': ft_trainingSamps_dur,   
