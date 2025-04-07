@@ -911,7 +911,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         fig.savefig(fname_fig)
         
         
-        idx_bestEpoch = nb_epochs-1#np.nanargmax(fev_medianUnits_allEpochs)
+        idx_bestEpoch = nb_cps-1#np.nanargmax(fev_medianUnits_allEpochs)
         # idx_bestEpoch = np.nanargmax(fev_medianUnits_allEpochs)
         fev_medianUnits_bestEpoch = np.round(fev_medianUnits_allEpochs[idx_bestEpoch],2)
         fev_allUnits_bestEpoch = fev_allUnits_allEpochs[(idx_bestEpoch),:]
