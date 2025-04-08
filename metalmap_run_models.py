@@ -925,7 +925,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     
         
         # Load the best weights to save stuff
-        weight_fold = 'epoch-%03d' % (idx_bestEpoch)  # 'file_name_{}_{:.03f}.png'.format(f_nm, val)
+        weight_fold = 'step-%03d' % step_numbers[idx_bestEpoch]  # 'file_name_{}_{:.03f}.png'.format(f_nm, val)
         weight_file = os.path.join(path_model_save,weight_fold)
         weights_dense_file = os.path.join(path_model_save,weight_fold,'weights_dense.h5')
     
