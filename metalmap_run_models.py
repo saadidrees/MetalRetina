@@ -635,18 +635,18 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         with open(os.path.join(path_model_save,'model_architecture.pkl'), 'rb') as f:
             mdl,config = cloudpickle.load(f)
 
-        fname_latestWeights = os.path.join(path_model_save,'epoch-%03d' % initial_epoch)
+        fname_latestWeights = os.path.join(path_model_save,'step-%03d' % initial_epoch)
         
         orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
         raw_restored = orbax_checkpointer.restore(fname_latestWeights)
         mdl_state = train_singleretunits.load(mdl,raw_restored['model'],lr)
         
         # Also load the dense layer weights
-        weights_dense_file = os.path.join(path_model_save,fname_latestWeights,'weights_dense.h5')
+        weights_dense_file = os.path.join(path_model_save,fname_latestWeights,'weights_output.h5')
 
         with h5py.File(weights_dense_file,'r') as f:
-            kern_all = jnp.array(f['weights_dense_kernel'])
-            bias_all = jnp.array(f['weights_dense_bias'])
+            kern_all = jnp.array(f['weights_output_kernel'])
+            bias_all = jnp.array(f['weights_output_bias'])
             
         weights_dense = (kern_all,bias_all)
         
@@ -748,6 +748,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     t_elapsed = 0
     t = time.time()
     approach=APPROACH
+    loss_currEpoch_master=[];loss_epoch_train=[];loss_epoch_val=[];fev_epoch_train=[];fev_epoch_val=[]
     if initial_epoch < nb_epochs:
         print('-----RUNNING MODEL-----')
         
@@ -932,18 +933,18 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         raw_restored = orbax_checkpointer.restore(weight_file)
         mdl_state = train_metalmaps.load(mdl,raw_restored['model'],lr)
         
-        with h5py.File(weights_dense_file,'r') as f:
-            weights_kern = jnp.array(f['weights_output_kernel'][idx_dset])
-            weights_bias = jnp.array(f['weights_output_bias'][idx_dset])
+        # with h5py.File(weights_dense_file,'r') as f:
+        #     weights_kern = jnp.array(f['weights_output_kernel'][idx_dset])
+        #     weights_bias = jnp.array(f['weights_output_bias'][idx_dset])
             
-        # Restore the correct dense weights for this dataset
-        mdl_state.params['output']['kernel'] = weights_kern
-        mdl_state.params['output']['bias'] = weights_bias
+        # # Restore the correct dense weights for this dataset
+        # mdl_state.params['output']['kernel'] = weights_kern
+        # mdl_state.params['output']['bias'] = weights_bias
     
         
         val_loss,pred_rate,y,pred_rate_units,y_units = train_metalmaps.eval_step(mdl_state,dataloader_val,dinf_batch_val)
         fname_bestWeight = np.array(weight_file,dtype='bytes')
-        fev_val, fracExVar_val, predCorr_val, rrCorr_val = model_evaluate_new(y_units,pred_rate_units,temporal_width_eval,lag=int(samps_shift),obs_noise=obs_noise)
+        fev_val, fracExVar_val, predCorr_val, rrCorr_val = model_evaluate_new(y_units,pred_rate_units,temporal_width_eval,lag=int(samps_shift),obs_noise=0)
     
         # if len(idx_natstim)>0:
         #     fev_val_natstim, _, predCorr_val_natstim, _ = model_evaluate_new(obs_rate_allStimTrials[idx_natstim],pred_rate[idx_natstim],temporal_width_eval,lag=int(samps_shift),obs_noise=obs_noise)
