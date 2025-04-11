@@ -44,9 +44,9 @@ Exptdata_spikes = namedtuple('Exptdata', ['X', 'y','spikes'])
 
 # %
 
-list_suffix = '20241115M' #'8M'#'20241115M'
-testList = 'testList_'+list_suffix
-trainList = 'trainList_'+list_suffix
+list_suffix = '20241115M' #'8M'#'20241115M'  20250323M
+testList = 'testlist_'+list_suffix
+trainList = 'trainlist_'+list_suffix
 
 path_dataset_base = '/home/saad/data/Dropbox/postdoc/analyses/data_ej/'
 
@@ -56,31 +56,33 @@ expDates_test = [line.strip() for line in expDates][1:]
 
 with open(os.path.join(path_dataset_base,'datasets',trainList+'.txt'), 'r') as f:
     expDates_train = f.readlines()
-expDates_train = [line.strip() for line in expDates_train][1:]
+expDates_train = [line.strip() for line in expDates_train]
+dataset_suffix = expDates_train[0]
+expDates_train = expDates_train[1:]
 
 
 expDates = expDates_test#expDates_train
 
-fold = 'test'
+fold = 'cluster'
 path_base = os.path.join('/home/saad/data/analyses/data_ej/models/',fold)
 path_base_single =  '/home/saad/data/analyses/data_ej/models/cluster/'
 
-dataset_suffix = 'CB_mesopic_f4_8ms_sig-4_MAPS'
+# dataset_suffix = 'CB_mesopic_f4_8ms_sig-4_MAPS'
 validationSamps_dur = 0.5
 
 # Pretrained model params
-APPROACH='metalzero'
+APPROACH='metalzero1step'
 LOSS_FUN='mad'
-mdl_name = 'CNN2D_MAP2'
+mdl_name = 'CNN2D_MAP3'
 U = len(expDates_train)#32#32
-lr_pretrained = 0.001
-temporal_width=70
-chan1_n=64; filt1_size=5
-chan2_n=64; filt2_size=3
-chan3_n=128; filt3_size=3
-chan4_n=128; filt4_size=3
+lr_pretrained = 0.0001
+temporal_width=80
+chan1_n=64; filt1_size=7
+chan2_n=128; filt2_size=7
+chan3_n=256; filt3_size=7
+chan4_n=0; filt4_size=0
 MaxPool=0
-trainingSamps_dur = 2 #1#20 #-1 #0.05 # minutes per dataset
+trainingSamps_dur = 5 #1#20 #-1 #0.05 # minutes per dataset
 
 
 fname_model,dict_params = model.utils_si.modelFileName(U=U,P=0,T=temporal_width,CB_n=0,
@@ -108,7 +110,7 @@ BUILD_MAPS = False
 MAX_RGCS = model.train_metalmaps.MAX_RGCS
 
 
-trainingSamps_dur = 0.5
+trainingSamps_dur = 2
     
 # Check whether the filename has multiple datasets that need to be merged
     
@@ -164,7 +166,7 @@ for d in range(len(fname_data_train_val_test_all)):
     frac_train_units = parameters['frac_train_units']
 
     data_train,data_val,dinf = handler_maps.arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf_params=psf_params,info_unitSplit=None,
-                                                                 BUILD_MAPS=BUILD_MAPS,MODE='validation')
+                                                                 BUILD_MAPS=BUILD_MAPS,MODE='validation',NORMALIZE_RESP=1)
     dinf['unit_locs_train'] = dinf['unit_locs'][dinf['idx_units_train']]
     dinf['unit_types_train'] = dinf['unit_types'][dinf['idx_units_train']]
     
@@ -416,7 +418,7 @@ for d in range(n_tasks):
     dataloader_val = DataLoader(RetinaDataset_val,batch_size=512,collate_fn=dataloaders.jnp_collate)
     
     # %
-    print('-----EVALUATING PERFORMANCE-----')
+    sel_cp = last_cp #step_numbers[3] # -1
     
     if last_cp==0:    # That is randomly initialized
         model_func = getattr(models_jax,mdl_name)
@@ -424,7 +426,7 @@ for d in range(n_tasks):
         mdl_state,mdl,config = model.train_metalmaps.initialize_model(mdl,dict_params,inp_shape,lr_pretrained,save_model=False,lr_schedule=None)
     else:
     
-        weight_fold = 'step-%03d' %(last_cp)  # 'file_name_{}_{:.03f}.png'.format(f_nm, val)
+        weight_fold = 'step-%03d' %(sel_cp)  # 'file_name_{}_{:.03f}.png'.format(f_nm, val)
         weight_fold = os.path.join(path_pretrained,weight_fold)
         weights_output_file = os.path.join(path_pretrained,weight_fold,'weights_output.h5')
     
@@ -493,27 +495,28 @@ metaInfo = {
    'Date': np.array(datetime.datetime.now(),dtype='bytes'),
    }
     
-
+print(np.nanmedian(predCorr_medUnits_allExps))
 # fname_save_performance = os.path.join(path_save_model_performance,APPROACH+'_perf_allExps_lastEpoch.pkl')
-# fname_save_performance = os.path.join(path_save_model_performance,APPROACH+'_perf_testExps_lastEpoch.pkl')
+fname_save_performance = os.path.join(path_save_model_performance,APPROACH+'_perf_testExps_lastEpoch.pkl')
 # fname_save_performance = os.path.join(path_save_model_performance,APPROACH+'_perf_trainingExps_lastEpoch.pkl')
 
 # # fname_save_performance = os.path.join(path_save_model_performance,APPROACH+'_perf_trainingExps_valUnits_lastEpoch.pkl')
 
-# with open(fname_save_performance, 'wb') as f:       # Save model architecture
-#     cloudpickle.dump([performance_lastEpoch,metaInfo], f)
+with open(fname_save_performance, 'wb') as f:       # Save model architecture
+    cloudpickle.dump([performance_lastEpoch,metaInfo], f)
 
 # %% Single retina all epochs
 
 # Select the testing dataset
-d=15
+d=-1
 
 idx_dset = d
 dinf_batch_val = jax.tree_map(lambda x: x[idx_dset] if isinstance(x, np.ndarray) else x, dinf_val)
 
 n_cells = dinf_val['N_val'][idx_dset]
 
-cps_sel = np.arange(0,len(step_numbers)).astype('int')
+idx_nonancp = np.where(step_numbers==last_cp)[0][0]+2
+cps_sel = np.arange(0,len(step_numbers[:idx_nonancp])).astype('int')
 # cps_sel = np.arange(0,100).astype('int')
 
 nb_cps_sel = len(cps_sel)
@@ -581,7 +584,7 @@ dataloader_val = DataLoader(RetinaDataset_val,batch_size=512,collate_fn=dataload
 # %
 print('-----EVALUATING PERFORMANCE-----')
 i=49
-for i in [nb_cps_sel-1]: #[nb_cps_sel-1]: #tqdm(range(0,nb_cps_sel-1)):
+for i in tqdm(range(0,nb_cps_sel)): #[nb_cps_sel-1]: #tqdm(range(0,nb_cps_sel-1)):
     # print('evaluating cp %d of %d'%(i,nb_cps))
     # weight_file = 'weights_'+fname_model+'_epoch-%03d.h5' % (i+1)
     
@@ -627,11 +630,16 @@ for i in [nb_cps_sel-1]: #[nb_cps_sel-1]: #tqdm(range(0,nb_cps_sel-1)):
     
     _ = gc.collect()
     
+fev_medianUnits_allEpochs
+    
 fig,axs = plt.subplots(1,2,figsize=(14,5)); fig.suptitle(dset_names[idx_dset])
 axs[0].plot(step_numbers[cps_sel],predCorr_medianUnits_allEpochs[:len(cps_sel)])
 axs[0].set_xlabel('Training steps');axs[0].set_ylabel('Corr'); 
 axs[1].plot(step_numbers[cps_sel],val_loss_allEpochs[:len(cps_sel)])
 axs[1].set_xlabel('Training steps');axs[1].set_ylabel('Validation loss'); 
+plt.show()
+
+u=5;plt.plot(y_units[:500,u]);plt.plot(pred_rate_units[:500,u]);plt.show()
 
 # %%
 
