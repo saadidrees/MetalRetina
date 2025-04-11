@@ -78,9 +78,9 @@ def arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf
     
     if NORMALIZE_RESP==1:
         # if MODE=='validation':
-        #     rgb = data_val.y
-        #     max_resp = np.max(rgb,axis=0)
-        #     data_val = normalize_responses(data_val,max_resp)
+            # rgb = data_val.y
+            # max_resp = np.max(rgb,axis=0)
+            # data_val = normalize_responses(data_val,max_resp)
         # else:
         rgb = np.concatenate((data_train.y,data_val.y),axis=0)
         max_resp = np.max(rgb,axis=0)

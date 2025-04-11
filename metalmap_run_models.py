@@ -55,7 +55,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     import model.paramsLogger
     import model.utils_si
     
-    from model import models_jax, train_singleretunits, dataloaders,handler_maps
+    from model import models_jax,train_singleretunits, dataloaders,handler_maps,prfr_params
     from model import train_metalmaps
     from torch.utils.data import DataLoader
     from tqdm.auto import tqdm
@@ -613,7 +613,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     # dict_params['dtype'] = DTYPE
     dict_params['nout'] = len(cell_types_unique)        
     
-    
+    # %
     if CONTINUE_TRAINING==1 or nb_epochs==0:       # if to continue a halted or previous training
         allEpochs = glob.glob(path_model_save+'/epoch*')
         allEpochs.sort()
