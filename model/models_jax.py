@@ -81,8 +81,9 @@ def getModelParams(fname_modelFolder):
         rgb = re.compile(r'C3-(\d+)-(\d+)')
         rgb = rgb.search(fname_modelFolder)
         params['C3_3d'] = int(0)
-    params['C3_n'] = int(rgb.group(1))
-    params['C3_s'] = int(rgb.group(2))
+        if rgb is not None:
+            params['C3_n'] = int(rgb.group(1))
+            params['C3_s'] = int(rgb.group(2))
     
     try:
         rgb = re.compile(r'C4-(\d+)-(\d+)-(\d+)')
@@ -1052,9 +1053,14 @@ class PRFR(nn.Module):
             param = self.param(name, nn.initializers.constant(init_value),shape=shape,dtype=self.dtype)
             setattr(self, name, param)
 
+        if len(param_names_trainable)==0:
+            param = self.param('dummy', nn.initializers.constant(1.),shape=shape,dtype=self.dtype)
+            setattr(self, 'dummy', param)
+
         param_names_nontrainable = list(set(param_names)-set(param_names_trainable))
         for name in param_names_nontrainable:
-            setattr(self, name, param)
+            init_value = self.pr_params[name]
+            setattr(self, name, init_value)
 
 
     def __call__(self, X_fun):
@@ -1119,10 +1125,8 @@ class PRFR_CNN2D_MAP(nn.Module):
         y = photoreceptor_layer(y)  # Apply the layer to inputs
         y = jnp.reshape(y,inputs.shape)
         y = y[:,N_trunc:]    # truncate first 20 points
-        y = nn.LayerNorm(feature_axes=1,reduction_axes=(1,2,3),use_bias=True,use_scale=True)(y)      # Along the temporal axis
+        y = nn.LayerNorm(feature_axes=1,reduction_axes=(1,2,3),use_bias=False,use_scale=False)(y)      # Along the temporal axis
 
-
-        
         y = jnp.moveaxis(y,1,-1)       # Because jax is channels last
         y = nn.Conv(features=self.chan1_n, kernel_size=(self.filt1_size,self.filt1_size),padding='SAME', kernel_init=glorot_uniform())(y)
         
