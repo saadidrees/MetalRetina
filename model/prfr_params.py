@@ -49,7 +49,7 @@ def fr_cones_gammafixed():
     pr_params['hillaffinity_scaleFac'] = 1.
     pr_params['hillaffinity_trainable'] = False
 
-    pr_params['gamma'] = 2.
+    pr_params['gamma'] = 2.3
     pr_params['gamma_scaleFac'] = 10.
     pr_params['gamma_trainable'] = False
 
