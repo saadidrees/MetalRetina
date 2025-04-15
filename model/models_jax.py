@@ -22,7 +22,7 @@ def model_definitions():
     """
     
     models_2D = ('CNN2D','CNN2D_MAXPOOL','CNN2D_FT','CNN2D_FT2','CNN2D_LNORM','CNN2D_MAP','CNN2D_MAP2','CNN2D_MAP3',
-                 'PRFR_CNN2D_MAP')
+                 'PRFR_CNN2D_MAP','PRFR_CNN2D_MAP2')
     
     models_3D = ('CNN_3D','PR_CNN3D')
     
@@ -1086,7 +1086,7 @@ class PRFR(nn.Module):
         betaSlow = self.betaSlow * self.pr_params['betaSlow_scaleFac']
         hillcoef = self.hillcoef * self.pr_params['hillcoef_scaleFac']
         hillaffinity = self.hillaffinity * self.pr_params['hillaffinity_scaleFac']
-        gamma = (self.gamma * self.pr_params['gamma_scaleFac']) / timeBin
+        gamma = (self.gamma * self.pr_params['gamma_scaleFac'])
         gdark = self.gdark * self.pr_params['gdark_scaleFac']
 
         # Call the custom Rieke model function
@@ -1180,3 +1180,5 @@ class PRFR_CNN2D_MAP(nn.Module):
         self.sow('intermediates', 'dense_activations', outputs)
 
         return outputs    
+    
+    
