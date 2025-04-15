@@ -1125,7 +1125,92 @@ class PRFR_CNN2D_MAP(nn.Module):
         y = photoreceptor_layer(y)  # Apply the layer to inputs
         y = jnp.reshape(y,inputs.shape)
         y = y[:,N_trunc:]    # truncate first 20 points
-        y = nn.LayerNorm(feature_axes=1,reduction_axes=(1,2,3),use_bias=False,use_scale=False)(y)      # Along the temporal axis
+        y = nn.LayerNorm(feature_axes=1,reduction_axes=(1,2,3),use_bias=True,use_scale=True)(y)      # Along the temporal axis
+
+        y = jnp.moveaxis(y,1,-1)       # Because jax is channels last
+        y = nn.Conv(features=self.chan1_n, kernel_size=(self.filt1_size,self.filt1_size),padding='SAME', kernel_init=glorot_uniform())(y)
+        
+        if self.MaxPool > 0:
+            y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
+
+        if self.BatchNorm == 1:
+            y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+        y = TrainableAF()(y)
+
+        
+        # second layer
+        if self.chan2_n>0:
+            y = nn.Conv(features=self.chan2_n, kernel_size=(self.filt2_size,self.filt2_size),padding='SAME', kernel_init=glorot_uniform())(y)
+            
+            if self.MaxPool > 0:
+                y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
+
+            if self.BatchNorm == 1:
+                y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+            y = TrainableAF()(y)
+
+
+        # Third layer
+        if self.chan3_n>0:
+            y = nn.Conv(features=self.chan3_n, kernel_size=(self.filt3_size,self.filt3_size),padding='SAME', kernel_init=glorot_uniform())(y)
+            
+            if self.MaxPool > 0:
+                y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
+
+            if self.BatchNorm == 1:
+                y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+
+            y = TrainableAF()(y)
+
+            
+        if self.chan4_n>0:
+            y = nn.Conv(features=self.chan4_n, kernel_size=(self.filt4_size,self.filt4_size),padding='SAME', kernel_init=glorot_uniform())(y)
+           
+            if self.BatchNorm == 1:
+                y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+                
+            y = TrainableAF()(y)
+        
+        y = nn.Conv(features=self.nout, kernel_size=(1,1),padding='SAME', kernel_init=he_normal(),name='output')(y)
+        
+        y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+
+        outputs = TrainableAF()(y)
+
+        self.sow('intermediates', 'dense_activations', outputs)
+
+        return outputs    
+    
+    
+class PRFR_CNN2D_MAP2(nn.Module):
+    chan1_n : int
+    filt1_size : int
+    chan2_n : int
+    filt2_size : int
+    chan3_n : int
+    filt3_size : int
+    chan4_n : int
+    filt4_size : int
+    nout : int    
+    filt_temporal_width : int    
+    BatchNorm : bool
+    MaxPool : int
+    pr_params: dict
+
+    @nn.compact
+    def __call__(self,inputs,training: bool,**kwargs):       
+        # pr_params = fr_rods_trainable()
+        
+        N_trunc = inputs.shape[1]-self.filt_temporal_width
+
+        photoreceptor_layer = PRFR(pr_params=self.pr_params)  # Instantiate the layer with pr_params
+        y = inputs
+        y = jnp.reshape(y,(y.shape[0],y.shape[1],y.shape[-2]*y.shape[-1]))
+        y = photoreceptor_layer(y)  # Apply the layer to inputs
+        y = jnp.reshape(y,inputs.shape)
+        y = y[:,N_trunc:]    # truncate first 20 points
+        y = nn.LayerNorm(feature_axes=1,reduction_axes=(1,2,3),use_bias=True,use_scale=True)(y)      # Along the temporal axis
+        y = y[:,-1:]
 
         y = jnp.moveaxis(y,1,-1)       # Because jax is channels last
         y = nn.Conv(features=self.chan1_n, kernel_size=(self.filt1_size,self.filt1_size),padding='SAME', kernel_init=glorot_uniform())(y)
