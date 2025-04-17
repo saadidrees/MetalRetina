@@ -302,7 +302,7 @@ def train_step_metalzero(mdl_state,batch,weights_output,lr,dinf_tr):        # Ma
     cell_types_unique = dinf_tr['cell_types_unique']
     segment_size = dinf_tr['segment_size']
     
-    lr_inner = lr/10
+    lr_inner = lr*10
 
 
     if NUM_SPLITS==0:
