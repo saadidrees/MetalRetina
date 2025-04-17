@@ -7,7 +7,61 @@ Created on Wed Nov  1 16:29:42 2023
          jZ Lab, York University
 """
 
-def fr_cones_gammafixed():
+def fr_cones_gammasmall():
+    pr_params = {}
+    pr_params['sigma'] = 2.2
+    pr_params['sigma_scaleFac'] = 10.
+    pr_params['sigma_trainable'] = False
+    
+    pr_params['phi'] = 2.2
+    pr_params['phi_scaleFac'] = 10.
+    pr_params['phi_trainable'] = False
+
+    pr_params['eta'] = 2.
+    pr_params['eta_scaleFac'] = 1000.
+    pr_params['eta_trainable'] = False
+
+    pr_params['beta'] = 0.9
+    pr_params['beta_scaleFac'] = 10.
+    pr_params['beta_trainable'] = False
+
+    pr_params['cgmp2cur'] = 0.01
+    pr_params['cgmp2cur_scaleFac'] = 1.
+    pr_params['cgmp2cur_trainable'] = False
+
+    pr_params['cgmphill'] = 3.
+    pr_params['cgmphill_scaleFac'] = 1.
+    pr_params['cgmphill_trainable'] = False
+
+    pr_params['cdark'] = 1.
+    pr_params['cdark_scaleFac'] = 1.
+    pr_params['cdark_trainable'] = False
+
+    pr_params['betaSlow'] = 0.
+    pr_params['betaSlow_scaleFac'] = 1.
+    pr_params['betaSlow_trainable'] = False
+
+    pr_params['hillcoef'] = 4.
+    pr_params['hillcoef_scaleFac'] = 1.
+    pr_params['hillcoef_trainable'] = False
+
+    pr_params['hillaffinity'] = 0.5
+    pr_params['hillaffinity_scaleFac'] = 1.
+    pr_params['hillaffinity_trainable'] = False
+
+    pr_params['gamma'] = 0.1
+    pr_params['gamma_scaleFac'] = 10.
+    pr_params['gamma_trainable'] = False
+
+    pr_params['gdark'] = 0.35#0.35
+    pr_params['gdark_scaleFac'] = 100.
+    pr_params['gdark_trainable'] = False
+
+    pr_params['timeBin'] = 8
+    
+    return pr_params
+
+def fr_cones_gammalarge():
     pr_params = {}
     pr_params['sigma'] = 2.2
     pr_params['sigma_scaleFac'] = 10.
@@ -53,7 +107,61 @@ def fr_cones_gammafixed():
     pr_params['gamma_scaleFac'] = 10.
     pr_params['gamma_trainable'] = False
 
-    pr_params['gdark'] = 0.205#0.35
+    pr_params['gdark'] = 0.35#0.35
+    pr_params['gdark_scaleFac'] = 100.
+    pr_params['gdark_trainable'] = False
+
+    pr_params['timeBin'] = 8
+    
+    return pr_params
+
+def fr_cones_gammafixed():
+    pr_params = {}
+    pr_params['sigma'] = 2.2
+    pr_params['sigma_scaleFac'] = 10.
+    pr_params['sigma_trainable'] = False
+    
+    pr_params['phi'] = 2.2
+    pr_params['phi_scaleFac'] = 10.
+    pr_params['phi_trainable'] = False
+
+    pr_params['eta'] = 2.
+    pr_params['eta_scaleFac'] = 1000.
+    pr_params['eta_trainable'] = False
+
+    pr_params['beta'] = 0.9
+    pr_params['beta_scaleFac'] = 10.
+    pr_params['beta_trainable'] = False
+
+    pr_params['cgmp2cur'] = 0.01
+    pr_params['cgmp2cur_scaleFac'] = 1.
+    pr_params['cgmp2cur_trainable'] = False
+
+    pr_params['cgmphill'] = 3.
+    pr_params['cgmphill_scaleFac'] = 1.
+    pr_params['cgmphill_trainable'] = False
+
+    pr_params['cdark'] = 1.
+    pr_params['cdark_scaleFac'] = 1.
+    pr_params['cdark_trainable'] = False
+
+    pr_params['betaSlow'] = 0.
+    pr_params['betaSlow_scaleFac'] = 1.
+    pr_params['betaSlow_trainable'] = False
+
+    pr_params['hillcoef'] = 4.
+    pr_params['hillcoef_scaleFac'] = 1.
+    pr_params['hillcoef_trainable'] = False
+
+    pr_params['hillaffinity'] = 0.5
+    pr_params['hillaffinity_scaleFac'] = 1.
+    pr_params['hillaffinity_trainable'] = False
+
+    pr_params['gamma'] = 2
+    pr_params['gamma_scaleFac'] = 10.
+    pr_params['gamma_trainable'] = False
+
+    pr_params['gdark'] = 0.28#0.35
     pr_params['gdark_scaleFac'] = 100.
     pr_params['gdark_trainable'] = False
 
