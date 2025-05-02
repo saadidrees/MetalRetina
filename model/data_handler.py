@@ -729,7 +729,7 @@ def prepare_data_cnn2d_maps(data,filt_temporal_width,num_chunks=1,MAKE_LISTS=Fal
         else:
             y = data.y[:,idx_unitsToTake]
 
-    if X.ndim==5:       # if the data has multiple stims
+    if X.ndim>=5:       # if the data has multiple stims
         X_rgb = np.moveaxis(X,0,-1)
         X_rgb =  X_rgb.reshape(X_rgb.shape[0],X_rgb.shape[1],X_rgb.shape[2],-1)
         X_rgb = np.moveaxis(X_rgb,-1,0)
@@ -1008,6 +1008,41 @@ def save_h5Dataset(fname,data_train,data_val,data_test,data_quality,dataset_rr,p
             grp.create_dataset(i, data=resp_orig[i],compression='gzip') 
             
     f.close()
+
+
+def compute_samp_ranges(nsamps_alldsets, nsamps_train,thresh):
+    starts = np.zeros_like(nsamps_alldsets)
+    stops = np.zeros_like(nsamps_alldsets)
+    
+    stops[0] = nsamps_train
+    
+    i=4
+    for i in range(1,len(nsamps_alldsets)):
+        n = nsamps_alldsets[i]
+        
+        rgb = stops[i-1]+nsamps_train
+        
+        if rgb > n-1:
+            stops[i] = n-1
+            starts[i] = n-nsamps_train-1
+        elif rgb>thresh-1:
+            starts[i]=0
+            stops[i] = nsamps_train
+        else:
+            stops[i] = rgb
+            starts[i] = stops[i-1]
+    
+    idx_samps_ranges = np.stack([starts,stops]).T
+    
+            
+    assert np.all(idx_samps_ranges[:,0]<nsamps_alldsets),'idx_samp start out of range'
+    assert np.all(idx_samps_ranges[:,1]<nsamps_alldsets),'idx_samp end out of range'
+    assert len(np.unique(np.diff(idx_samps_ranges,axis=1)))==1,'num samps not uniform across datasets'
+    
+
+    return idx_samps_ranges
+
+
     
 # NEED TO TIDY THIS UP
 def load_h5Dataset(fname_data_train_val_test,LOAD_TR=True,LOAD_VAL=True,LOAD_ALL_TR=False,nsamps_val=-1,nsamps_train=-1,nsamps_test=-1,RETURN_VALINFO=False,

@@ -173,12 +173,21 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
             num_rgcs_all.append(f['data_train']['y'].shape[1])
     nsamps_alldsets = np.asarray(nsamps_alldsets)
     num_rgcs_all = np.asarray(num_rgcs_all)
-
+    
+    mins_alldsets = (nsamps_alldsets*8e-3)/60
+ # % 
+    if trainingSamps_dur>0:
+        nsamps_train = int((trainingSamps_dur*60*1000)/8)      # Training data in samps
+    
+        thresh = 194470
+        idx_samp_ranges = model.data_handler.compute_samp_ranges(nsamps_alldsets,nsamps_train,thresh)
+    
+# %
     # Load datasets
     idx_train_start = 0    # mins to chop off in the begining.
     psf_params = dict(pixel_neigh=1,method='cross')
     FRAC_U_TRTR = 0.75
-    d=0
+    d=1
     dict_train = {};dict_trtr={};dict_trval={}
     dict_val = {}
     dict_test = {}
@@ -189,7 +198,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     for d in range(len(fname_data_train_val_test_all)):
         exp = expDates[d]
         print('Loading dataset %d of %d'%(d+1,len(fname_data_train_val_test_all)))
-        rgb = load_h5Dataset(fname_data_train_val_test_all[d],nsamps_val=validationSamps_dur,nsamps_train=trainingSamps_dur,nsamps_test=testSamps_dur,  # THIS NEEDS TO BE TIDIED UP
+        rgb = load_h5Dataset(fname_data_train_val_test_all[d],nsamps_val=validationSamps_dur,nsamps_train=idx_samp_ranges[d],nsamps_test=testSamps_dur,  # THIS NEEDS TO BE TIDIED UP
                              idx_train_start=idx_train_start)
         data_train=rgb[0]
         data_val = rgb[1]
