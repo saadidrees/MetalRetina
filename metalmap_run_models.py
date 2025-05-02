@@ -534,7 +534,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     if lrscheduler == 'exponential_decay':
         # lr_schedule = optax.exponential_decay(init_value=lr,transition_steps=n_batches*1,decay_rate=0.75,staircase=True,transition_begin=0)
         transition_steps = n_batches*5# 20000
-        lr_schedule = optax.exponential_decay(init_value=lr,transition_steps=transition_steps,decay_rate=0.5,staircase=True,transition_begin=0,end_value=lr/1000)
+        lr_schedule = optax.exponential_decay(init_value=lr,transition_steps=transition_steps,decay_rate=0.5,staircase=True,transition_begin=0,end_value=lr/100)
 
     
     elif lrscheduler == 'warmup_exponential_decay':
@@ -736,7 +736,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     
 # %% Train model metalzero
     if runOnCluster==0:
-        ncps_perEpoch = 1
+        ncps_perEpoch = 2
         cp_interval = model.utils_si.round_to_even(n_batches/ncps_perEpoch)
     else:
         ncps_perEpoch = 1
@@ -795,7 +795,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     fname_lastcp = os.path.join(path_model_save,'step-%03d' % last_cp)
 
     # Select the testing dataset
-    d=11
+    d=0
 
     for d in np.arange(0,len(fname_data_train_val_test_all)):   
         idx_dset = d
@@ -866,7 +866,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     
         print('-----EVALUATING PERFORMANCE-----')
         i=nb_cps-1
-        for i in range(0,nb_cps-1):
+        for i in range(0,nb_cps):
             print('evaluating checkpoint %d of %d | Step %d'%(i,nb_cps,step_numbers[i]))
             # weight_file = 'weights_'+fname_model+'_epoch-%03d.h5' % (i+1)
             weight_fold = 'step-%03d' % step_numbers[i]  # 'file_name_{}_{:.03f}.png'.format(f_nm, val)
@@ -910,6 +910,8 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         
         fname_fig = os.path.join(path_model_save,'fev_val_%s.png'%dset_names[idx_dset])
         fig.savefig(fname_fig)
+        
+        # u=3;plt.plot(y_units[:500,u]);plt.plot(pred_rate_units[:500,u]);plt.show()
         
         
         idx_bestEpoch = nb_cps-1#np.nanargmax(fev_medianUnits_allEpochs)
