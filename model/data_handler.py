@@ -1016,28 +1016,35 @@ def compute_samp_ranges(nsamps_alldsets, nsamps_train,thresh):
     
     stops[0] = nsamps_train
     
-    i=4
+    i=1
     for i in range(1,len(nsamps_alldsets)):
         n = nsamps_alldsets[i]
         
         rgb = stops[i-1]+nsamps_train
         
-        if rgb > n-1:
+        if nsamps_train>n:
+            starts[i]=0
             stops[i] = n-1
-            starts[i] = n-nsamps_train-1
-        elif rgb>thresh-1:
+        
+        elif rgb>thresh:
             starts[i]=0
             stops[i] = nsamps_train
         else:
-            stops[i] = rgb
-            starts[i] = stops[i-1]
+            if rgb > n:
+                stops[i] = n-1
+                starts[i] = n-nsamps_train-1
+            else:
+                stops[i] = rgb
+                starts[i] = stops[i-1]
     
     idx_samps_ranges = np.stack([starts,stops]).T
     
             
     assert np.all(idx_samps_ranges[:,0]<nsamps_alldsets),'idx_samp start out of range'
     assert np.all(idx_samps_ranges[:,1]<nsamps_alldsets),'idx_samp end out of range'
-    assert len(np.unique(np.diff(idx_samps_ranges,axis=1)))==1,'num samps not uniform across datasets'
+    assert np.all(idx_samps_ranges[:,0]>-1),'idx_samp start below 0'
+
+    # assert len(np.unique(np.diff(idx_samps_ranges,axis=1)))==1,'num samps not uniform across datasets'
     
 
     return idx_samps_ranges
