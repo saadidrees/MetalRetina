@@ -180,7 +180,8 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         nsamps_train = int((trainingSamps_dur*60*1000)/8)      # Training data in samps
     
         thresh = 194470
-        idx_samp_ranges = model.data_handler.compute_samp_ranges(nsamps_alldsets,nsamps_train,thresh)
+        # idx_samp_ranges = model.data_handler.compute_samp_ranges(nsamps_alldsets,nsamps_train,thresh)
+        idx_samp_ranges = np.stack([np.array([0,nsamps_train])]*len(fname_data_train_val_test_all))
     
 # %
     # Load datasets
