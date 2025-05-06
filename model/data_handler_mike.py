@@ -613,22 +613,22 @@ def load_h5Dataset(fname_data_train_val_test,LOAD_TR=True,LOAD_VAL=True,nsamps_v
             idx_test_end = int(f['data_test']['X'].shape[0])
 
     
-    if type(nsamps_train)==np.ndarray:       # That is the range is already provided
-        idx_train_start = nsamps_train[0]
-        idx_train_end = nsamps_train[1]
-    else:
+    # if type(nsamps_train)==np.ndarray:       # That is the range is already provided
+    #     idx_train_start = nsamps_train[0]
+    #     idx_train_end = nsamps_train[1]
+    # else:
 
-        idx_train_start = int((idx_train_start*60*1000)/(t_frame))    # mins to frames
-        if nsamps_train==-1 or nsamps_train==0 :
-            # idx_train_start = 0
+    idx_train_start = int((idx_train_start*60*1000)/(t_frame))    # mins to frames
+    if nsamps_train==-1 or nsamps_train==0 :
+        # idx_train_start = 0
+        idx_train_end = int(f['data_train']['X'].shape[0])
+        # idx_data = np.arange(idx_train_start,np.array(f['data_train']['y'].shape[0]))
+    else:
+        nsamps_train = int((nsamps_train*60*1000)/t_frame)
+        idx_train_end = idx_train_start+nsamps_train
+        
+        if idx_train_end>=int(f['data_train']['X'].shape[0]):   # if the duration provided is longer than dataset size
             idx_train_end = int(f['data_train']['X'].shape[0])
-            # idx_data = np.arange(idx_train_start,np.array(f['data_train']['y'].shape[0]))
-        else:
-            nsamps_train = int((nsamps_train*60*1000)/t_frame)
-            idx_train_end = idx_train_start+nsamps_train
-            
-            if idx_train_end>=int(f['data_train']['X'].shape[0]):   # if the duration provided is longer than dataset size
-                idx_train_end = int(f['data_train']['X'].shape[0])
     
     
     # Training data

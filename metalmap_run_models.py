@@ -176,14 +176,14 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     
     mins_alldsets = (nsamps_alldsets*8e-3)/60
  # % 
-    if trainingSamps_dur>0:
-        nsamps_train = int((trainingSamps_dur*60*1000)/8)      # Training data in samps
+    # if trainingSamps_dur>0:
+    #     nsamps_train = int((trainingSamps_dur*60*1000)/8)      # Training data in samps
     
-        thresh = 194470
-        # idx_samp_ranges = model.data_handler.compute_samp_ranges(nsamps_alldsets,nsamps_train,thresh)
-        idx_samp_ranges = np.stack([np.array([0,nsamps_train])]*len(fname_data_train_val_test_all))
-    else:
-        idx_samp_ranges = np.stack([np.array([-1])]*len(fname_data_train_val_test_all))
+    #     thresh = 194470
+    #     # idx_samp_ranges = model.data_handler.compute_samp_ranges(nsamps_alldsets,nsamps_train,thresh)
+    #     idx_samp_ranges = np.stack([np.array([0,nsamps_train])]*len(fname_data_train_val_test_all))
+    # else:
+    #     idx_samp_ranges = np.stack([np.array([-1])]*len(fname_data_train_val_test_all))
     
 # %
     # Load datasets
@@ -200,13 +200,9 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     nsamps_alldsets_loaded = []
     for d in range(len(fname_data_train_val_test_all)):
         exp = expDates[d]
-        if idx_samp_ranges[d][0]==-1:
-            idx_samps = -1
-        else:
-            idx_samps = idx_samp_ranges[d]
         
         print('Loading dataset %d of %d'%(d+1,len(fname_data_train_val_test_all)))
-        rgb = load_h5Dataset(fname_data_train_val_test_all[d],nsamps_val=validationSamps_dur,nsamps_train=idx_samps,nsamps_test=testSamps_dur,  # THIS NEEDS TO BE TIDIED UP
+        rgb = load_h5Dataset(fname_data_train_val_test_all[d],nsamps_val=validationSamps_dur,nsamps_train=trainingSamps_dur,nsamps_test=testSamps_dur,  # THIS NEEDS TO BE TIDIED UP
                              idx_train_start=idx_train_start)
         data_train=rgb[0]
         data_val = rgb[1]
