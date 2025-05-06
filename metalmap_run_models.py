@@ -553,14 +553,17 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     elif lrscheduler == 'warmup_exponential_decay':
         
         max_lr = lr
-        min_lr = 1e-8
+        min_lr = lr/100
+        transition_steps = n_batches*5# 20000
+
         
-        nsteps_warmup = 500
+        nsteps_warmup = 1000
         warmup_schedule = optax.linear_schedule(init_value=min_lr,end_value=max_lr,transition_steps=nsteps_warmup)
         # n_decay = 50
         # decay_schedule = optax.linear_schedule(init_value=max_lr,end_value=min_lr,transition_steps=n_batches*n_decay)
-        decay_schedule = optax.exponential_decay(init_value=max_lr,transition_steps=500,decay_rate=0.75,staircase=True,transition_begin=0,end_value=min_lr)
+        decay_schedule = optax.exponential_decay(init_value=max_lr,transition_steps=transition_steps,decay_rate=0.5,staircase=True,transition_begin=0,end_value=min_lr)
         lr_schedule = optax.join_schedules(schedules=[warmup_schedule,decay_schedule],boundaries=[nsteps_warmup])
+   
     elif lrscheduler=='linear':
         lr_schedule = optax.linear_schedule(init_value=lr,end_value=1e-9,transition_steps=n_batches*50)
         lr_schedule = optax.linear_schedule(init_value=lr,end_value=1e-9,transition_steps=100)
