@@ -404,10 +404,6 @@ def train_step_metalzeroperturb(mdl_state,batch,weights_output,lr,dinf_tr):     
         # Normalize the grads to unit vector
         local_grads_total = jax.tree_map(lambda g: g/jnp.linalg.norm(g), local_grads_total)
         
-        # Scale vectors by num of RGCs
-        scaleFac = (N_tr+N_val)/MAX_RGCS
-        local_grads_total = jax.tree_map(lambda g: g*scaleFac, local_grads_total)
-
 
         # Record dense layer weights
         conv_kern = local_params_val['output']['kernel']
@@ -434,6 +430,13 @@ def train_step_metalzeroperturb(mdl_state,batch,weights_output,lr,dinf_tr):     
             params = jax.tree_util.tree_map(lambda p, g: p - lr_inner*(g/(jnp.abs(g)+1e-8)), params, relaxed_grad)
 
         local_grads_total = relaxed_grad
+        # Normalize the grads to unit vector
+        local_grads_total = jax.tree_map(lambda g: g/jnp.linalg.norm(g), local_grads_total)
+        
+        # Scale vectors by num of RGCs
+        scaleFac = (N_tr+N_val)/MAX_RGCS
+        local_grads_total = jax.tree_map(lambda g: g*scaleFac, local_grads_total)
+
         
         return local_loss_val,y_pred_val,local_mdl_state,local_grads_total,conv_kern,conv_bias
     
