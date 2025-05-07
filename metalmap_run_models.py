@@ -927,7 +927,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         fname_fig = os.path.join(path_model_save,'fev_val_%s.png'%dset_names[idx_dset])
         fig.savefig(fname_fig)
         
-        # u=3;plt.plot(y_units[:500,u]);plt.plot(pred_rate_units[:500,u]);plt.show()
+        # u=10;plt.plot(y_units[:500,u]);plt.plot(pred_rate_units[:500,u]);plt.show()
         
         
         idx_bestEpoch = nb_cps-1#np.nanargmax(fev_medianUnits_allEpochs)

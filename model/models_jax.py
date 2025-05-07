@@ -13,6 +13,7 @@ from jax import numpy as jnp
 from flax import linen as nn
 import re
 from jax.nn.initializers import glorot_uniform, he_normal
+import jax.random as random
 
 
 
@@ -22,7 +23,8 @@ def model_definitions():
     """
     
     models_2D = ('CNN2D','CNN2D_MAXPOOL','CNN2D_FT','CNN2D_FT2','CNN2D_LNORM','CNN2D_MAP','CNN2D_MAP2','CNN2D_MAP3',
-                 'PRFR_CNN2D_MAP','PRFR_CNN2D_MAP2')
+                 'PRFR_CNN2D_MAP','PRFR_CNN2D_MAP2',
+                 'CNN2D_MAP3_FT','PRFR_CNN2D_MAP_FT')
     
     models_3D = ('CNN_3D','PR_CNN3D')
     
@@ -692,9 +694,10 @@ class CNN2D_MAP3(nn.Module):
     #     self.__dict__.update(kwargs)
 
     @nn.compact
-    def __call__(self,inputs,training: bool,**kwargs):       
+    def __call__(self,inputs,training: bool,rng=None,**kwargs):       
         y = jnp.moveaxis(inputs,1,-1)       # Because jax is channels last
         y = nn.Conv(features=self.chan1_n, kernel_size=(self.filt1_size,self.filt1_size),padding='SAME', kernel_init=glorot_uniform())(y)
+        
         
         if self.MaxPool > 0:
             y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
@@ -747,7 +750,194 @@ class CNN2D_MAP3(nn.Module):
 
         return outputs    
         
+class CNN2D_MAPN(nn.Module):
     
+    chan1_n : int
+    filt1_size : int
+    chan2_n : int
+    filt2_size : int
+    chan3_n : int
+    filt3_size : int
+    chan4_n : int
+    filt4_size : int
+    nout : int    
+    filt_temporal_width : int    
+    BatchNorm : bool
+    MaxPool : int
+    # dtype : type
+    
+    # def __init__(self, **kwargs):
+    #     self.__dict__.update(kwargs)
+
+    @nn.compact
+    def __call__(self,inputs,training: bool,rng=None,**kwargs):       
+        sig = 0.1
+        
+        y = jnp.moveaxis(inputs,1,-1)       # Because jax is channels last
+        y = nn.Conv(features=self.chan1_n, kernel_size=(self.filt1_size,self.filt1_size),padding='SAME', kernel_init=glorot_uniform())(y)
+        
+        if training and rng is not None:
+            noise = sig * jax.random.normal(rng, y.shape)  # Std-dev of 0.1; adjust as needed
+            y = y + noise
+
+        if self.MaxPool > 0:
+            y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
+
+        if self.BatchNorm == 1:
+            y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+        y = TrainableAF()(y)
+
+        
+        # second layer
+        if self.chan2_n>0:
+            y = nn.Conv(features=self.chan2_n, kernel_size=(self.filt2_size,self.filt2_size),padding='SAME', kernel_init=glorot_uniform())(y)
+            if training and rng is not None:
+                noise = sig * jax.random.normal(rng, y.shape)  # Std-dev of 0.1; adjust as needed
+                y = y + noise
+
+            if self.MaxPool > 0:
+                y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
+
+            if self.BatchNorm == 1:
+                y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+            y = TrainableAF()(y)
+
+
+        # Third layer
+        if self.chan3_n>0:
+            y = nn.Conv(features=self.chan3_n, kernel_size=(self.filt3_size,self.filt3_size),padding='SAME', kernel_init=glorot_uniform())(y)
+            if training and rng is not None:
+                noise = sig * jax.random.normal(rng, y.shape)  # Std-dev of 0.1; adjust as needed
+                y = y + noise
+
+            if self.MaxPool > 0:
+                y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
+
+            if self.BatchNorm == 1:
+                y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+
+            y = TrainableAF()(y)
+
+            
+        if self.chan4_n>0:
+            y = nn.Conv(features=self.chan4_n, kernel_size=(self.filt4_size,self.filt4_size),padding='SAME', kernel_init=glorot_uniform())(y)
+            if training and rng is not None:
+                noise = sig * jax.random.normal(rng, y.shape)  # Std-dev of 0.1; adjust as needed
+                y = y + noise
+
+            if self.BatchNorm == 1:
+                y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+                
+            y = TrainableAF()(y)
+        
+        y = nn.Conv(features=self.nout, kernel_size=(1,1),padding='SAME', kernel_init=he_normal(),name='output')(y)
+        
+        y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+
+        outputs = TrainableAF()(y)
+
+        self.sow('intermediates', 'dense_activations', outputs)
+
+        return outputs    
+class CNN2D_MAP3_FT(nn.Module):
+    
+    chan1_n : int
+    filt1_size : int
+    chan2_n : int
+    filt2_size : int
+    chan3_n : int
+    filt3_size : int
+    chan4_n : int
+    filt4_size : int
+    nout : int    
+    filt_temporal_width : int    
+    BatchNorm : bool
+    MaxPool : int
+    # dtype : type
+    
+    # def __init__(self, **kwargs):
+    #     self.__dict__.update(kwargs)
+
+    @nn.compact
+    def __call__(self,inputs,training: bool,**kwargs):       
+        y = jnp.moveaxis(inputs,1,-1)       # Because jax is channels last
+        
+        y = nn.LayerNorm(use_bias=True,use_scale=True,name='inputnorm',feature_axes=-1,reduction_axes=(1,2,3))(y)
+        # y=ActivityScaler(name='inputnorm')(y)
+
+        y = nn.Conv(features=self.chan1_n, kernel_size=(self.filt1_size,self.filt1_size),padding='SAME', kernel_init=glorot_uniform())(y)
+        
+        if self.MaxPool > 0:
+            y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
+
+        if self.BatchNorm == 1:
+            y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+        y = TrainableAF()(y)
+
+        
+        # second layer
+        if self.chan2_n>0:
+            y = nn.Conv(features=self.chan2_n, kernel_size=(self.filt2_size,self.filt2_size),padding='SAME', kernel_init=glorot_uniform())(y)
+            
+
+            if self.BatchNorm == 1:
+                y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+            y = TrainableAF()(y)
+
+
+        # Third layer
+        if self.chan3_n>0:
+            y = nn.Conv(features=self.chan3_n, kernel_size=(self.filt3_size,self.filt3_size),padding='SAME', kernel_init=glorot_uniform())(y)
+            
+
+            if self.BatchNorm == 1:
+                y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+
+            y = TrainableAF()(y)
+
+            
+        if self.chan4_n>0:
+            y = nn.Conv(features=self.chan4_n, kernel_size=(self.filt4_size,self.filt4_size),padding='SAME', kernel_init=glorot_uniform())(y)
+           
+            if self.BatchNorm == 1:
+                y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+                
+            y = TrainableAF()(y)
+        
+        y = nn.Conv(features=self.nout, kernel_size=(1,1),padding='SAME', kernel_init=he_normal(),name='output')(y)
+        
+        y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+
+        outputs = TrainableAF()(y)
+
+        # self.sow('intermediates', 'dense_activations', outputs)
+        
+        outputs=ActivityScaler(name='outputscale')(outputs)
+        # outputs=ActivityScalerLog(name='outputscale')(outputs)
+
+        # outputs = TrainableAF(name='outputaf')(outputs)
+        self.sow('intermediates', 'dense_activations', outputs)
+
+        return outputs  
+    
+
+class ActivityScaler(nn.Module):
+    @nn.compact
+    def __call__(self, x):
+        scale = self.param('scale', lambda rng, shape: jnp.ones(shape)*0.1, (1,))*10
+        scale = jnp.clip(scale,min=0.2)
+        bias = self.param('bias', lambda rng, shape: jnp.zeros(shape), (1,))
+        return x * (scale*1) + bias
+    
+class ActivityScalerLog(nn.Module):
+    @nn.compact
+    def __call__(self, x):
+        log_scale = self.param('log_scale', lambda rng, shape: jnp.zeros(shape), (1,))
+        bias = self.param('bias', lambda rng, shape: jnp.zeros(shape), (1,))
+        scale = jnp.exp(log_scale)
+        return x * scale + bias
+
+
 class TrainableAF(nn.Module):
     sat_init: float = 0.01
     gain_init: float = 0.95
@@ -763,7 +953,34 @@ class TrainableAF(nn.Module):
         outputs = a+b
         # outputs = jnp.clip(outputs,0)
         return outputs
-    
+
+class TimeModulator(nn.Module):
+    # log_timescale = 0.0
+    @nn.compact
+    def __call__(self, x):  # x: [B, H, W, T]
+        B, H, W, T = x.shape
+
+        # Learnable log-timescale (starts at 0 → timescale=1)
+        log_timescale = self.param('log_timescale', lambda rng, shape: jnp.zeros(shape), (1,))
+        timescale = jnp.exp(log_timescale*100)  # shape: (1,)
+
+        # Compute virtual time indices after rescaling
+        t_idx = jnp.arange(T) / timescale  # shape: (T,)
+        t_idx = jnp.clip(t_idx, 0, T - 1)
+
+        # Linear interpolation indices
+        lower = jnp.floor(t_idx).astype(jnp.int32)
+        upper = jnp.clip(lower + 1, 0, T - 1)
+        weight = (t_idx - lower)[None, None, None, :]  # broadcast to [1,1,1,T]
+
+        # Gather frames
+        x_lower = jnp.take(x, lower, axis=-1)  # shape: [B, H, W, T]
+        x_upper = jnp.take(x, upper, axis=-1)  # shape: [B, H, W, T]
+
+        # Interpolate
+        x_mod = (1 - weight) * x_lower + weight * x_upper  # shape: [B, H, W, T]
+        return x_mod
+
 # class TrainableAFClipped(nn.Module):
 #     sat_init: float = 0.01
 #     gain_init: float = 0.95
@@ -1066,7 +1283,7 @@ class PRFR(nn.Module):
     def __call__(self, X_fun):
         # X_fun is the input tensor of shape (batch, time_steps, units)
         timeBin = float(self.pr_params['timeBin'])  # ms
-        frameTime = timeBin  # ms
+        frameTime = 8  # ms
         upSamp_fac = int(frameTime/timeBin)
         TimeStep = 1e-3 * timeBin
 
@@ -1114,7 +1331,7 @@ class PRFR_CNN2D_MAP(nn.Module):
     pr_params: dict
 
     @nn.compact
-    def __call__(self,inputs,training: bool,**kwargs):       
+    def __call__(self,inputs,training: bool,rng=None,**kwargs):       
         # pr_params = fr_rods_trainable()
         
         N_trunc = inputs.shape[1]-self.filt_temporal_width
@@ -1181,8 +1398,7 @@ class PRFR_CNN2D_MAP(nn.Module):
 
         return outputs    
     
-    
-class PRFR_CNN2D_MAP2(nn.Module):
+class PRFR_CNN2D_MAP_FT(nn.Module):
     chan1_n : int
     filt1_size : int
     chan2_n : int
@@ -1210,7 +1426,6 @@ class PRFR_CNN2D_MAP2(nn.Module):
         y = jnp.reshape(y,inputs.shape)
         y = y[:,N_trunc:]    # truncate first 20 points
         y = nn.LayerNorm(feature_axes=1,reduction_axes=(1,2,3),use_bias=True,use_scale=True)(y)      # Along the temporal axis
-        y = y[:,-1:]
 
         y = jnp.moveaxis(y,1,-1)       # Because jax is channels last
         y = nn.Conv(features=self.chan1_n, kernel_size=(self.filt1_size,self.filt1_size),padding='SAME', kernel_init=glorot_uniform())(y)
@@ -1261,9 +1476,8 @@ class PRFR_CNN2D_MAP2(nn.Module):
         y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
 
         outputs = TrainableAF()(y)
-
+        
+        outputs=ActivityScaler(name='outputscale')(outputs)
         self.sow('intermediates', 'dense_activations', outputs)
-
         return outputs    
-    
     
