@@ -554,7 +554,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         
         max_lr = lr
         min_lr = lr/10
-        transition_steps = 100#n_batches*5# 20000
+        transition_steps = 1000#n_batches*5# 20000
 
         
         nsteps_warmup = 1000
