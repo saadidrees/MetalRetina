@@ -771,13 +771,13 @@ class CNN2D_MAPN(nn.Module):
 
     @nn.compact
     def __call__(self,inputs,training: bool,rng=None,**kwargs):       
-        sig = 0.1
+        sig = 0.2
         
         y = jnp.moveaxis(inputs,1,-1)       # Because jax is channels last
         y = nn.Conv(features=self.chan1_n, kernel_size=(self.filt1_size,self.filt1_size),padding='SAME', kernel_init=glorot_uniform())(y)
         
         if training and rng is not None:
-            noise = sig * jax.random.normal(rng, y.shape)  # Std-dev of 0.1; adjust as needed
+            noise = sig * jax.random.normal(rng, y.shape)  
             y = y + noise
 
         if self.MaxPool > 0:
@@ -792,7 +792,7 @@ class CNN2D_MAPN(nn.Module):
         if self.chan2_n>0:
             y = nn.Conv(features=self.chan2_n, kernel_size=(self.filt2_size,self.filt2_size),padding='SAME', kernel_init=glorot_uniform())(y)
             if training and rng is not None:
-                noise = sig * jax.random.normal(rng, y.shape)  # Std-dev of 0.1; adjust as needed
+                noise = sig * jax.random.normal(rng, y.shape) 
                 y = y + noise
 
             if self.MaxPool > 0:
@@ -807,7 +807,7 @@ class CNN2D_MAPN(nn.Module):
         if self.chan3_n>0:
             y = nn.Conv(features=self.chan3_n, kernel_size=(self.filt3_size,self.filt3_size),padding='SAME', kernel_init=glorot_uniform())(y)
             if training and rng is not None:
-                noise = sig * jax.random.normal(rng, y.shape)  # Std-dev of 0.1; adjust as needed
+                noise = sig * jax.random.normal(rng, y.shape)  
                 y = y + noise
 
             if self.MaxPool > 0:
@@ -822,7 +822,7 @@ class CNN2D_MAPN(nn.Module):
         if self.chan4_n>0:
             y = nn.Conv(features=self.chan4_n, kernel_size=(self.filt4_size,self.filt4_size),padding='SAME', kernel_init=glorot_uniform())(y)
             if training and rng is not None:
-                noise = sig * jax.random.normal(rng, y.shape)  # Std-dev of 0.1; adjust as needed
+                noise = sig * jax.random.normal(rng, y.shape)  
                 y = y + noise
 
             if self.BatchNorm == 1:
