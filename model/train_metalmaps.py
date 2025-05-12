@@ -282,6 +282,8 @@ def train_step_metalzero(mdl_state,batch,weights_output,lr,dinf_tr):        # Ma
         # Normalize the grads to unit vector
         local_grads_total = jax.tree_map(lambda g: g/jnp.linalg.norm(g), local_grads_total)
         
+        local_grads_total = clip_grads(local_grads_total)
+
         # Scale vectors by num of RGCs
         scaleFac = (N_tr+N_val)/MAX_RGCS
         local_grads_total = jax.tree_map(lambda g: g*scaleFac, local_grads_total)
@@ -355,7 +357,7 @@ def train_step_metalzero(mdl_state,batch,weights_output,lr,dinf_tr):        # Ma
     return local_losses_summed,mdl_state,weights_output,local_grads_summed
 
 @jax.jit
-def train_step_metalzeroperturb(mdl_state,batch,weights_output,lr,dinf_tr):        # Make unit vectors then scale by num of RGCs
+def train_step_metalzerospectralnorm(mdl_state,batch,weights_output,lr,dinf_tr):        # Make unit vectors then scale by num of RGCs
     """
     State is the grand model state that actually gets updated
     state_task is the "state" after gradients are applied for a specific task
@@ -404,39 +406,15 @@ def train_step_metalzeroperturb(mdl_state,batch,weights_output,lr,dinf_tr):     
         # Normalize the grads to unit vector
         local_grads_total = jax.tree_map(lambda g: g/jnp.linalg.norm(g), local_grads_total)
         
-
-        # Record dense layer weights
-        conv_kern = local_params_val['output']['kernel']
-        conv_bias = local_params_val['output']['bias']
-        
-        
-        rng = jax.random.PRNGKey(0)
-        sig = 0.01
-        perturbed_grads = jax.tree_map(lambda g: g+(jax.random.normal(rng, g.shape)*sig), local_grads_total) 
-        
-        relax_steps=3
-        relaxed_grad = perturbed_grads
-        params = jax.tree_util.tree_map(lambda p, g: p - lr_inner*(g/(jnp.abs(g)+1e-8)), global_params, relaxed_grad)
-        relax_alpha = 0.8
-
-
-        for _ in range(relax_steps):
-            # Recompute current gradient at new params
-            # current_grad = grad(loss_fn)(params, data)
-            (_,_),current_grads = grad_fn(local_mdl_state,params,batch_train,coords_tr,N_tr,segment_size,mask_tr)
-            # Exponential moving average (gradient smoothing)
-            relaxed_grad = jax.tree_util.tree_map(lambda r, c: relax_alpha * r + (1 - relax_alpha) * c,relaxed_grad,current_grads)
-            # Optionally: simulate moving params slightly in relaxed direction
-            params = jax.tree_util.tree_map(lambda p, g: p - lr_inner*(g/(jnp.abs(g)+1e-8)), params, relaxed_grad)
-
-        local_grads_total = relaxed_grad
-        # Normalize the grads to unit vector
-        local_grads_total = jax.tree_map(lambda g: g/jnp.linalg.norm(g), local_grads_total)
-        
+        local_grads_total = clip_grads(local_grads_total)
         # Scale vectors by num of RGCs
         scaleFac = (N_tr+N_val)/MAX_RGCS
         local_grads_total = jax.tree_map(lambda g: g*scaleFac, local_grads_total)
 
+
+        # Record dense layer weights
+        conv_kern = local_params_val['output']['kernel']
+        conv_bias = local_params_val['output']['bias']
         
         return local_loss_val,y_pred_val,local_mdl_state,local_grads_total,conv_kern,conv_bias
     
@@ -485,7 +463,9 @@ def train_step_metalzeroperturb(mdl_state,batch,weights_output,lr,dinf_tr):     
     weights_output = (local_kerns,local_biases)
     
     mdl_state = mdl_state.apply_gradients(grads=local_grads_summed)
-    
+    params_normed = spectral_norm(mdl_state.params)
+    mdl_state = mdl_state.replace(params=params_normed)
+
            
     # print(local_losses_summed)   
         
@@ -500,7 +480,6 @@ def train_step_metalzeroperturb(mdl_state,batch,weights_output,lr,dinf_tr):     
     """
 
     return local_losses_summed,mdl_state,weights_output,local_grads_summed
-
 
 @jax.jit
 def train_step_metalzero1step(mdl_state,batch,weights_output,lr,dinf_tr):        # Make unit vectors then scale by num of RGCs
@@ -627,10 +606,11 @@ def eval_step(state,batch_val,dinf_batch_val,n_batches=1e5):
     segment_size =  dinf_batch_val['segment_size']
     
     """
-    N_val = dinf_batch_val['N_val']
-    mask_val = dinf_batch_val['maskunits_val']
-    coords = dinf_batch_val['umaskcoords_val']
-    segment_size =  dinf_batch_val['segment_size']
+    if dinf_batch_val!= None:
+        N_val = dinf_batch_val['N_val']
+        mask_val = dinf_batch_val['maskunits_val']
+        coords = dinf_batch_val['umaskcoords_val']
+        segment_size =  dinf_batch_val['segment_size']
 
     if type(batch_val) is tuple:
         X,y = batch_val
@@ -642,7 +622,11 @@ def eval_step(state,batch_val,dinf_batch_val,n_batches=1e5):
         
         
         # return loss,y_pred,y,y_pred_units,y_units
-    
+    elif type(batch_val) is np.ndarray:         # i.e. y is not included
+        y_pred = state.apply_fn({'params': state.params},batch_val,training=True)
+        return y_pred
+
+        
     else:       # if the data is in dataloader format
         batch = next(iter(batch_val))
         y_shape = (*batch[0].shape[-2:],2)
@@ -772,6 +756,24 @@ def weight_regularizer(params,alpha=1e-4):
     for w in jax.tree_leaves(params_subset):
         l2_loss = l2_loss + alpha * (w**2).mean()
     return l2_loss
+
+def spectral_norm(params, num_iters=1):
+    regularizer_exclude_list = ['BatchNorm',]
+    params_subset = dict_subset(params,regularizer_exclude_list)
+    
+    normed_params = params
+    for layer in params_subset:
+        for param in layer:
+            W = params_subset[layer][param]
+            v = jax.random.normal(jax.random.PRNGKey(0), (W.shape[1], 1))
+            v = jnp.matmul(W.T, jnp.matmul(W, v))
+            v = v / (jnp.linalg.norm(v) + 1e-8)
+            u = jnp.matmul(W, v)
+            sigma = jnp.linalg.norm(u)
+            normed_W = W/sigma
+            normed_params[layer][param]=normed_W
+    return normed_params
+
 
 def load_h5_to_nested_dict(group):
     result = {}
@@ -985,8 +987,8 @@ def train_step(mdl_state,weights_output,config,training_params,dataloader_train,
                 loss,mdl_state,weights_output,grads = train_step_metalzero(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
             elif APPROACH == 'metalzero1step':
                 loss,mdl_state,weights_output,grads = train_step_metalzero1step(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
-            elif APPROACH == 'metalzeroperturb':
-                loss,mdl_state,weights_output,grads = train_step_metalzeroperturb(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
+            elif APPROACH == 'metalzerospectralnorm':
+                loss,mdl_state,weights_output,grads = train_step_metalzerospectralnorm(mdl_state,batch_train,weights_output,current_lr,dinf_tr)
 
                 
             t_tr = time.time()-t_tr
