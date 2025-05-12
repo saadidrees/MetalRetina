@@ -780,8 +780,8 @@ class CNN2D_MAPN(nn.Module):
             noise = sig * jax.random.normal(rng, y.shape)  
             y = y + noise
 
-        if self.MaxPool > 0:
-            y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
+        # if self.MaxPool > 0:
+        #     y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
 
         if self.BatchNorm == 1:
             y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
@@ -795,8 +795,8 @@ class CNN2D_MAPN(nn.Module):
                 noise = sig * jax.random.normal(rng, y.shape) 
                 y = y + noise
 
-            if self.MaxPool > 0:
-                y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
+            # if self.MaxPool > 0:
+            #     y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
 
             if self.BatchNorm == 1:
                 y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
