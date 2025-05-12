@@ -233,7 +233,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         dinf['umaskcoords_trtr'],dinf['umaskcoords_trval'],dinf['umaskcoords_trtr_remap'],dinf['umaskcoords_trval_remap'] = handler_maps.umask_metal_split(dinf['umaskcoords_train'],
                                                                                                                                                            FRAC_U_TRTR=FRAC_U_TRTR)
         
-        data_trtr,data_trval = handler_maps.prepare_metaldataset(data_train,dinf['umaskcoords_trtr'],dinf['umaskcoords_trval'],bgr=0,frac_stim_train=0.5,BUILD_MAPS=BUILD_MAPS)
+        data_trtr,data_trval = handler_maps.prepare_metaldataset(data_train,dinf['umaskcoords_trtr'],dinf['umaskcoords_trval'],bgr=0,frac_stim_train=0.25,BUILD_MAPS=BUILD_MAPS)
 
         del data_train, data_test
         
@@ -554,10 +554,10 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         
         max_lr = lr
         min_lr = lr/10
-        transition_steps = 1000#n_batches*5# 20000
+        transition_steps = 2000#n_batches*5# 20000
 
         
-        nsteps_warmup = 1000
+        nsteps_warmup = 2000
         warmup_schedule = optax.linear_schedule(init_value=min_lr,end_value=max_lr,transition_steps=nsteps_warmup)
         # n_decay = 50
         # decay_schedule = optax.linear_schedule(init_value=max_lr,end_value=min_lr,transition_steps=n_batches*n_decay)
@@ -567,7 +567,6 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     elif lrscheduler=='linear':
         lr_schedule = optax.linear_schedule(init_value=lr,end_value=1e-9,transition_steps=n_batches*50)
         lr_schedule = optax.linear_schedule(init_value=lr,end_value=1e-9,transition_steps=100)
-
 
     else:
         lr_schedule = optax.constant_schedule(lr)
