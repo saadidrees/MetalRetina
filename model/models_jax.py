@@ -474,25 +474,13 @@ class CNN2D_MAP(nn.Module):
     #     self.__dict__.update(kwargs)
 
     @nn.compact
-    def __call__(self,inputs,training: bool,**kwargs):       
-        sigma=0.01       # sigma for noise
+    def __call__(self,inputs,training: bool,rng=None,**kwargs):       
         y = jnp.moveaxis(inputs,1,-1)       # Because jax is channels last
-        # y = nn.LayerNorm(feature_axes=-1,reduction_axes=-1,epsilon=1e-7)(y)        # z-score the input across temporal dimension
         y = nn.Conv(features=self.chan1_n, kernel_size=(self.filt1_size,self.filt1_size),padding='SAME', kernel_init=glorot_uniform())(y)
         
-        if self.MaxPool > 0:
-            y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
-
+        
         if self.BatchNorm == 1:
-            rgb = y.shape[1:]
-            y = y.reshape(y.shape[0],-1)
-            y = nn.LayerNorm(use_bias=True,use_scale=True)(y)
-            y = y.reshape(y.shape[0],*rgb)
-
-            # y = nn.BatchNorm(axis=-1,epsilon=1e-7,use_running_average=not training)(y)
-
-        # y = y + sigma*jax.random.normal(jax.random.PRNGKey(1),y.shape)
-        # y = nn.relu(y)
+            y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
         y = TrainableAF()(y)
 
         
@@ -500,17 +488,8 @@ class CNN2D_MAP(nn.Module):
         if self.chan2_n>0:
             y = nn.Conv(features=self.chan2_n, kernel_size=(self.filt2_size,self.filt2_size),padding='SAME', kernel_init=glorot_uniform())(y)
             
-            if self.MaxPool > 0:
-                y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
-
             if self.BatchNorm == 1:
-                rgb = y.shape[1:]
-                y = y.reshape(y.shape[0],-1)
-                y = nn.LayerNorm(use_bias=True,use_scale=True)(y)
-                y = y.reshape(y.shape[0],*rgb)
-
-            # y = y + sigma*jax.random.normal(jax.random.PRNGKey(1),y.shape)
-            # y = nn.relu(y)
+                y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
             y = TrainableAF()(y)
 
 
@@ -522,13 +501,8 @@ class CNN2D_MAP(nn.Module):
                 y = nn.max_pool(y,window_shape=(self.MaxPool,self.MaxPool),strides=(1,1),padding='SAME')
 
             if self.BatchNorm == 1:
-                rgb = y.shape[1:]
-                y = y.reshape(y.shape[0],-1)
-                y = nn.LayerNorm(use_bias=True,use_scale=True)(y)
-                y = y.reshape(y.shape[0],*rgb)
+                y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
 
-            # y = y + sigma*jax.random.normal(jax.random.PRNGKey(1),y.shape)
-            # y = nn.relu(y)
             y = TrainableAF()(y)
 
             
@@ -536,27 +510,19 @@ class CNN2D_MAP(nn.Module):
             y = nn.Conv(features=self.chan4_n, kernel_size=(self.filt4_size,self.filt4_size),padding='SAME', kernel_init=glorot_uniform())(y)
            
             if self.BatchNorm == 1:
-                rgb = y.shape[1:]
-                y = y.reshape(y.shape[0],-1)
-                y = nn.LayerNorm(use_bias=True,use_scale=True)(y)
-                y = y.reshape(y.shape[0],*rgb)
+                y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
                 
-            # y = y + sigma*jax.random.normal(jax.random.PRNGKey(1),y.shape)
-            # y = nn.relu(y)
             y = TrainableAF()(y)
-
-
         
-        rgb = y.shape[1:]
-        y = y.reshape(y.shape[0],-1)
-        y = nn.LayerNorm(use_bias=True,use_scale=True)(y)
-        y = y.reshape(y.shape[0],*rgb)
-
         y = nn.Conv(features=self.nout, kernel_size=(1,1),padding='SAME', kernel_init=he_normal(),name='output')(y)
-        outputs = nn.softplus(y)
+        
+        y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+
+        outputs = TrainableAF()(y)
+
         self.sow('intermediates', 'dense_activations', outputs)
 
-        return outputs        
+        return outputs    
     
     
     
