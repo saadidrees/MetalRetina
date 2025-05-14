@@ -279,10 +279,12 @@ def train_step_metalzero(mdl_state,batch,weights_output,lr,dinf_tr):        # Ma
         # Get the direction of generalization
         local_grads_total = jax.tree_map(lambda g_1, g_2: g_1+g_2, local_grads,local_grads_val)
         
+        
+        local_grads_total = clip_grads(local_grads_total)
+
         # Normalize the grads to unit vector
         local_grads_total = jax.tree_map(lambda g: g/jnp.linalg.norm(g), local_grads_total)
         
-        local_grads_total = clip_grads(local_grads_total)
 
         # Scale vectors by num of RGCs
         scaleFac = (N_tr+N_val)/MAX_RGCS
