@@ -24,7 +24,8 @@ def model_definitions():
     
     models_2D = ('CNN2D','CNN2D_MAXPOOL','CNN2D_FT','CNN2D_FT2','CNN2D_LNORM','CNN2D_MAP','CNN2D_MAP2','CNN2D_MAP3','CNN2D_MAPN',
                  'PRFR_CNN2D_MAP','PRFR_CNN2D_MAP2',
-                 'CNN2D_MAP3_FT','PRFR_CNN2D_MAP_FT')
+                 'CNN2D_MAP3_FT','PRFR_CNN2D_MAP_FT',
+                 'LNLN')
     
     models_3D = ('CNN_3D','PR_CNN3D')
     
@@ -1447,3 +1448,49 @@ class PRFR_CNN2D_MAP_FT(nn.Module):
         self.sow('intermediates', 'dense_activations', outputs)
         return outputs    
     
+
+# %% LNLN model
+
+class LNLN(nn.Module):
+    chan1_n : int
+    filt1_size : int
+    chan2_n : int
+    filt2_size : int
+    chan3_n : int
+    filt3_size : int
+    chan4_n : int
+    filt4_size : int
+    nout : int    
+    filt_temporal_width : int    
+    BatchNorm : bool
+    MaxPool : int
+
+        
+    @nn.compact
+    def __call__(self, inputs, training: bool, rng=None, **kwargs):
+        y = jnp.moveaxis(inputs, 1, -1)  # (batch, time, height, width, channels) -> (batch, height, width, time)
+
+        # First LN layer: separate subunits (linear + nonlinearity)
+        y = nn.Conv(features=self.chan1_n, kernel_size=(self.filt1_size,self.filt1_size),padding='SAME', kernel_init=glorot_uniform())(y)
+        if self.BatchNorm:
+            y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+
+        y = nn.relu(y)
+
+        # Second LN layer: integrate subunit outputs linearly
+        y = nn.Conv(
+            features=self.nout,
+            kernel_size=(1, 1),
+            padding='SAME',
+            kernel_init=he_normal(),
+            name='output'
+        )(y)
+
+        if self.BatchNorm:
+            y = nn.LayerNorm(use_bias=True, use_scale=True, feature_axes=-1)(y)
+
+        outputs = nn.softplus(y)
+
+        self.sow('intermediates', 'dense_activations', outputs)
+
+        return outputs
