@@ -233,7 +233,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         dinf['umaskcoords_trtr'],dinf['umaskcoords_trval'],dinf['umaskcoords_trtr_remap'],dinf['umaskcoords_trval_remap'] = handler_maps.umask_metal_split(dinf['umaskcoords_train'],
                                                                                                                                                            FRAC_U_TRTR=FRAC_U_TRTR)
         
-        data_trtr,data_trval = handler_maps.prepare_metaldataset(data_train,dinf['umaskcoords_trtr'],dinf['umaskcoords_trval'],bgr=0,frac_stim_train=0.75,BUILD_MAPS=BUILD_MAPS)
+        data_trtr,data_trval = handler_maps.prepare_metaldataset(data_train,dinf['umaskcoords_trtr'],dinf['umaskcoords_trval'],bgr=0,frac_stim_train=0.5,BUILD_MAPS=BUILD_MAPS)
 
         del data_train, data_test
         
@@ -751,7 +751,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     
 # %% Train model metalzero
     if runOnCluster==0:
-        ncps_perEpoch = 2
+        ncps_perEpoch = 5
         cp_interval = model.utils_si.round_to_even(n_batches/ncps_perEpoch)
     else:
         ncps_perEpoch = 1
