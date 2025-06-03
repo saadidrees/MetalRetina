@@ -1451,6 +1451,25 @@ class PRFR_CNN2D_MAP_FT(nn.Module):
 
 # %% LNLN model
 
+class SubunitTrainableAF(nn.Module):
+    """Applies TrainableAF nonlinearity independently to each subunit channel."""
+    sat_init: float = 0.01
+    gain_init: float = 0.95
+
+    @nn.compact
+    def __call__(self, x):
+        # x: shape (B, H, W, C)
+        C = x.shape[-1]
+        sat = self.param('sat', lambda rng, shape: jnp.full(shape, self.sat_init), (C,))
+        gain = self.param('gain', lambda rng, shape: jnp.full(shape, self.gain_init), (C,))
+
+        x_exp = gain * x
+        a = ((1 - sat + 1e-6) * jnp.log1p(jnp.exp(x_exp))) / (gain + 1e-6)
+        b = (sat * jnp.exp(x_exp)) / (1 + jnp.exp(x_exp) + 1e-6)
+
+        return a + b
+
+
 class LNLN(nn.Module):
     chan1_n : int
     filt1_size : int
@@ -1475,16 +1494,13 @@ class LNLN(nn.Module):
         if self.BatchNorm:
             y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
 
-        y = nn.relu(y)
+        y = SubunitTrainableAF()(y)
+
+        B, H, W, C = y.shape
+        lin_out_flat = y.reshape(-1, C)  # (B*H*W, n_subunits)
 
         # Second LN layer: integrate subunit outputs linearly
-        y = nn.Conv(
-            features=self.nout,
-            kernel_size=(1, 1),
-            padding='SAME',
-            kernel_init=he_normal(),
-            name='output'
-        )(y)
+        y = nn.Conv(features=self.nout, kernel_size=(1,1),padding='SAME', kernel_init=he_normal(),name='output')(y)
 
         if self.BatchNorm:
             y = nn.LayerNorm(use_bias=True, use_scale=True, feature_axes=-1)(y)
@@ -1494,3 +1510,47 @@ class LNLN(nn.Module):
         self.sow('intermediates', 'dense_activations', outputs)
 
         return outputs
+
+# class LNLN(nn.Module):
+#     chan1_n : int
+#     filt1_size : int
+#     chan2_n : int
+#     filt2_size : int
+#     chan3_n : int
+#     filt3_size : int
+#     chan4_n : int
+#     filt4_size : int
+#     nout : int    
+#     filt_temporal_width : int    
+#     BatchNorm : bool
+#     MaxPool : int
+
+        
+#     @nn.compact
+#     def __call__(self, inputs, training: bool, rng=None, **kwargs):
+#         y = jnp.moveaxis(inputs, 1, -1)  # (batch, time, height, width, channels) -> (batch, height, width, time)
+
+#         # First LN layer: separate subunits (linear + nonlinearity)
+#         y = nn.Conv(features=self.chan1_n, kernel_size=(self.filt1_size,self.filt1_size),padding='SAME', kernel_init=glorot_uniform())(y)
+#         if self.BatchNorm:
+#             y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
+
+#         y = nn.relu(y)
+
+#         # Second LN layer: integrate subunit outputs linearly
+#         y = nn.Conv(
+#             features=self.nout,
+#             kernel_size=(1, 1),
+#             padding='SAME',
+#             kernel_init=he_normal(),
+#             name='output'
+#         )(y)
+
+#         if self.BatchNorm:
+#             y = nn.LayerNorm(use_bias=True, use_scale=True, feature_axes=-1)(y)
+
+#         outputs = nn.softplus(y)
+
+#         self.sow('intermediates', 'dense_activations', outputs)
+
+#         return outputs
