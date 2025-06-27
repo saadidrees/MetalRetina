@@ -212,7 +212,7 @@ def load_data_allLightLevels_cb(fname_dataFile,dataset,frac_val=0.2,frac_test=0.
 
 
 def load_data_allLightLevels_natstim(fname_dataFile,dataset,frac_val=0.2,frac_test=0.05,filt_temporal_width=60,
-                                     idx_cells_orig=None,thresh_rr=0.15,N_split=0,CHECK_CONTAM=False,resp_med_grand=None,NORM_RESP=True):
+                                     idx_cells_orig=None,thresh_rr=0.15,N_split=0,CHECK_CONTAM=False,resp_med_grand=None,NORM_RESP=True,CALC_NOISE=True):
     
     # valSets = ['scotopic','photopic']   # embed this in h5 file
     
@@ -271,8 +271,8 @@ def load_data_allLightLevels_natstim(fname_dataFile,dataset,frac_val=0.2,frac_te
             resp = spikeRate_cells
             resp_orig = spikeRate_cells
 
-        resp[np.isnan(resp)] = 0
-        resp_orig[np.isnan(resp_orig)] = 0
+        # resp[np.isnan(resp)] = 0
+        # resp_orig[np.isnan(resp_orig)] = 0
 
         
         # resp = resp.T
@@ -317,57 +317,63 @@ def load_data_allLightLevels_natstim(fname_dataFile,dataset,frac_val=0.2,frac_te
         resp_median_allUnits = resp_median[idx_unitsToTake]
 
 # dataset for retinal reliability
-
-    try:
-        rgb = np.squeeze(datasets['val'].y[:,:,0,:]) # select just one stim from validation set
-        temp_val = np.moveaxis(rgb,-1,0)    # move trials to first axis
-        rgb = np.squeeze(datasets['val'].spikes[:,:,0,:]) # select just one stim from validation set
-        temp_val_spikes = np.moveaxis(rgb,-1,0)
-        dset_name = np.array(dataset)
-     
-    except:
-        select_val = valSets[-1]
-        temp_val = np.moveaxis(datasets['val_'+select_val].y,-1,0)
-        temp_val_spikes = np.moveaxis(datasets['val_'+select_val].spikes,-1,0)
-        dset_name = select_val
+    if 'val' in datasets:
+        try:
+            rgb = np.squeeze(datasets['val'].y[:,:,0,:]) # select just one stim from validation set
+            temp_val = np.moveaxis(rgb,-1,0)    # move trials to first axis
+            rgb = np.squeeze(datasets['val'].spikes[:,:,0,:]) # select just one stim from validation set
+            temp_val_spikes = np.moveaxis(rgb,-1,0)
+            dset_name = np.array(dataset)
+         
+        except:
+            select_val = valSets[-1]
+            temp_val = np.moveaxis(datasets['val_'+select_val].y,-1,0)
+            temp_val_spikes = np.moveaxis(datasets['val_'+select_val].spikes,-1,0)
+            dset_name = select_val
+        
+        dataset_rr = {}    
+        if idx_cells_orig is None:
+            temp_val = temp_val[:,:,idx_unitsToTake]
+            temp_val_spikes = temp_val_spikes[:,:,idx_unitsToTake]
     
-    dataset_rr = {}    
-    if idx_cells_orig is None:
-        temp_val = temp_val[:,:,idx_unitsToTake]
-        temp_val_spikes = temp_val_spikes[:,:,idx_unitsToTake]
-
-    dict_vars = {
-         'val': temp_val,
-         'val_spikes': temp_val_spikes,
-         'dataset_name': np.atleast_1d(np.array(dset_name,dtype='bytes'))
-         }
-     
-    dataset_rr['stim_0'] = dict_vars
+        dict_vars = {
+             'val': temp_val,
+             'val_spikes': temp_val_spikes,
+             'dataset_name': np.atleast_1d(np.array(dset_name,dtype='bytes'))
+             }
+         
+        dataset_rr['stim_0'] = dict_vars
+    else:
+        dataset_rr = None
         
     
 # Retinal reliability method 1 - only take one validation set at this stage
+    if 'val' in datasets:
+        numCells = len(idx_unitsToTake)
+        rate_sameStim_trials = dataset_rr['stim_0']['val']
+        # if rate_sameStim_trials.shape[0]>1: # use this method if we have multiple trials
+        _, fracExVar_allUnits, _, corr_allUnits = model_evaluate(rate_sameStim_trials,None,filt_temporal_width,RR_ONLY=True)
+        retinalReliability_fev = np.round(np.nanmedian(fracExVar_allUnits),2)
+        retinalReliability_corr = np.round(np.nanmedian(corr_allUnits),2)
+                    
+    
+        data_quality = {
+            'retinalReliability_fev': retinalReliability_fev,
+            'retinalReliability_corr': retinalReliability_corr,
+            'uname_selectedUnits': units_all,  
+            'idx_unitsToTake': idx_unitsToTake,
+            'fracExVar_allUnits': fracExVar_allUnits,
+            'corr_allUnits': corr_allUnits,
+            'resp_median_allUnits' : resp_median_allUnits,
+            'resp_median_grand':resp_med_grand
+            }
+        print('Retinal Reliability - FEV: '+str(np.round(retinalReliability_fev,2)))
+        print('Retinal Reliability - Corr: '+str(np.round(retinalReliability_corr,2)))
+        print('Number of selected cells: ',str(len(idx_unitsToTake)))
+    else:
+        print('No validation dataset')
+        data_quality = dict(var_noise = None)
 
-    numCells = len(idx_unitsToTake)
-    rate_sameStim_trials = dataset_rr['stim_0']['val']
-    # if rate_sameStim_trials.shape[0]>1: # use this method if we have multiple trials
-    _, fracExVar_allUnits, _, corr_allUnits = model_evaluate(rate_sameStim_trials,None,filt_temporal_width,RR_ONLY=True)
-    retinalReliability_fev = np.round(np.nanmedian(fracExVar_allUnits),2)
-    retinalReliability_corr = np.round(np.nanmedian(corr_allUnits),2)
-                
-
-    data_quality = {
-        'retinalReliability_fev': retinalReliability_fev,
-        'retinalReliability_corr': retinalReliability_corr,
-        'uname_selectedUnits': units_all,  
-        'idx_unitsToTake': idx_unitsToTake,
-        'fracExVar_allUnits': fracExVar_allUnits,
-        'corr_allUnits': corr_allUnits,
-        'resp_median_allUnits' : resp_median_allUnits,
-        'resp_median_grand':resp_med_grand
-        }
-    print('Retinal Reliability - FEV: '+str(np.round(retinalReliability_fev,2)))
-    print('Retinal Reliability - Corr: '+str(np.round(retinalReliability_corr,2)))
-    print('Number of selected cells: ',str(len(idx_unitsToTake)))
 
 
     
@@ -376,60 +382,76 @@ def load_data_allLightLevels_natstim(fname_dataFile,dataset,frac_val=0.2,frac_te
     # Cut out portion from middle that will comprise validation and test. Then take test dataset as last part of the validation dataset
     
     # But first, for the validation set, average the response across trials so we predict 'trial-averaged-response'
-    data_train = datasets['train']
-
-    stim_val = datasets['val'].X[:,:,:,:,0]
-    resp_val = np.nanmean(datasets['val'].y,axis=-1)
-    resp_val_allTrials = datasets['val'].y
-    spikes_val = datasets['val'].spikes
-
-    if frac_test > 0:
-        idx_stimToTakeAsTest = -1
-        nsamps_test = int(np.floor(stim_val.shape[0]*0.5))   
-        idx_test = np.arange(stim_val.shape[0]-nsamps_test,stim_val.shape[0])        
-        stim_test = stim_val[idx_test,:,:,idx_stimToTakeAsTest]
-        resp_test = resp_val[idx_test,:,idx_stimToTakeAsTest]
-        resp_test_allTrials = resp_val_allTrials[idx_test,:,idx_stimToTakeAsTest,:]
-        spikes_test = spikes_val[idx_test,:,idx_stimToTakeAsTest,:]
-        
-        data_test = Exptdata_trials(stim_test,resp_test,resp_test_allTrials,spikes_test)
-        data_val = Exptdata_trials(stim_val,resp_val,resp_val_allTrials,spikes_val)
-
-        
-    if idx_cells_orig is None:
-        data_train = Exptdata(data_train.X,data_train.y[:,idx_unitsToTake],data_train.spikes[:,idx_unitsToTake])        
-        data_val = Exptdata_trials(data_val.X,data_val.y[:,idx_unitsToTake],data_val.y_trials[:,idx_unitsToTake],data_val.spikes[:,idx_unitsToTake])
-        data_test = Exptdata_trials(data_test.X,data_test.y[:,idx_unitsToTake],data_test.y_trials[:,idx_unitsToTake],data_test.spikes[:,idx_unitsToTake])
-
     
     resp_orig = {}
     for i in resp_non_norm.keys():
         resp_orig[i] = resp_non_norm[i][:,idx_unitsToTake]
+
+    data_train = datasets['train']
     
-    datasets=[]; stim_train=[]; stim_val=[];stim_test=[];
-    _ = gc.collect()
+    if 'val' in datasets:
+
+        stim_val = datasets['val'].X[:,:,:,:,0]
+        resp_val = np.nanmean(datasets['val'].y,axis=-1)
+        resp_val_allTrials = datasets['val'].y
+        spikes_val = datasets['val'].spikes
     
-    if CHECK_CONTAM == True:
-        print('Checking contamination across train and val')
-        check_trainVal_contamination(data_train.X,data_val.X)
-        print('Checking contamination across train and test')
-        check_trainVal_contamination(data_train.X,data_test.X)
+        if frac_test > 0:
+            idx_stimToTakeAsTest = -1
+            nsamps_test = int(np.floor(stim_val.shape[0]*0.5))   
+            idx_test = np.arange(stim_val.shape[0]-nsamps_test,stim_val.shape[0])        
+            stim_test = stim_val[idx_test,:,:,idx_stimToTakeAsTest]
+            resp_test = resp_val[idx_test,:,idx_stimToTakeAsTest]
+            resp_test_allTrials = resp_val_allTrials[idx_test,:,idx_stimToTakeAsTest,:]
+            spikes_test = spikes_val[idx_test,:,idx_stimToTakeAsTest,:]
+            
+            data_test = Exptdata_trials(stim_test,resp_test,resp_test_allTrials,spikes_test)
+            data_val = Exptdata_trials(stim_val,resp_val,resp_val_allTrials,spikes_val)
+    
+            
+        if idx_cells_orig is None:
+            data_train = Exptdata(data_train.X,data_train.y[:,idx_unitsToTake],data_train.spikes[:,idx_unitsToTake])        
+            data_val = Exptdata_trials(data_val.X,data_val.y[:,idx_unitsToTake],data_val.y_trials[:,idx_unitsToTake],data_val.spikes[:,idx_unitsToTake])
+            data_test = Exptdata_trials(data_test.X,data_test.y[:,idx_unitsToTake],data_test.y_trials[:,idx_unitsToTake],data_test.spikes[:,idx_unitsToTake])
+    
         
+        if CHECK_CONTAM == True:
+            print('Checking contamination across train and val')
+            check_trainVal_contamination(data_train.X,data_val.X)
+            print('Checking contamination across train and test')
+            check_trainVal_contamination(data_train.X,data_test.X)
+
+        # NOte that noise is estimated from the normalized response
+        
+        # dataset_rr={};
+    else:
+        data_val = None
+        data_test=None
     
-    # NOte that noise is estimated from the normalized response
-    if data_train.y.shape[0]==data_val.y_trials.shape[0]:
-        resp_forNoise = np.concatenate((data_train.y,data_val.y_trials),axis=2)
+    
+    if CALC_NOISE==True:
+        
+        if data_val==None:
+            resp_forNoise = data_train.y
+        else:
+            resp_forNoise = np.concatenate((data_train.y,data_val.y_trials),axis=2)
+
         resp_forNoise = np.moveaxis(resp_forNoise,0,-1)
         resp_forNoise = np.moveaxis(resp_forNoise,1,2)
         resp_forNoise = resp_forNoise.reshape(resp_forNoise.shape[0],resp_forNoise.shape[1],-1)
         resp_forNoise = np.moveaxis(resp_forNoise,-1,0)
         obs_noise = estimate_noise(resp_forNoise)
         data_quality['var_noise']  = obs_noise
+    
     else:
         obs_noise=None
         data_quality['var_noise']  = None
-    
-    # dataset_rr={};
+       
+        
+    # datasets=[]; stim_train=[]; stim_val=[];stim_test=[];
+     # _ = gc.collect()
+        
+
     return data_train,data_val,data_test,data_quality,dataset_rr,resp_orig,obs_noise
 
 
@@ -656,19 +678,22 @@ def load_h5Dataset(fname_data_train_val_test,LOAD_TR=True,LOAD_VAL=True,nsamps_v
             
             
         # test data
-        idx = np.arange(idx_test_start,idx_test_end)
-        X = np.array(f['data_test']['X'][idx],dtype=dtype)
-        y = np.array(f['data_test']['y'][idx],dtype=dtype)
-        if 'spikes' in f['data_test']:
-            spikes = np.array(f['data_test']['spikes'][idx],dtype=dtype)
+        if nsamps_test>0:
+            idx = np.arange(idx_test_start,idx_test_end)
+            X = np.array(f['data_test']['X'][idx],dtype=dtype)
+            y = np.array(f['data_test']['y'][idx],dtype=dtype)
+            if 'spikes' in f['data_test']:
+                spikes = np.array(f['data_test']['spikes'][idx],dtype=dtype)
+            else:
+                spikes = np.zeroslike(y); spikes[:]=np.nan
+                
+            if 'y_trials' in f['data_test']:
+                y_trials = np.array(f['data_test']['y_trials'][idx],dtype=dtype)
+                data_test = Exptdata_trials(X,y,y_trials,spikes)
+            else:
+                data_test = Exptdata_spikes(X,y,spikes)
         else:
-            spikes = np.zeroslike(y); spikes[:]=np.nan
-            
-        if 'y_trials' in f['data_test']:
-            y_trials = np.array(f['data_test']['y_trials'][idx],dtype=dtype)
-            data_test = Exptdata_trials(X,y,y_trials,spikes)
-        else:
-            data_test = Exptdata_spikes(X,y,spikes)
+            data_test=None
 
     else:
         data_val = None
@@ -691,26 +716,29 @@ def load_h5Dataset(fname_data_train_val_test,LOAD_TR=True,LOAD_VAL=True,nsamps_v
             data_quality[i] = rgb
             
     # Retinal reliability data
-    select_groups = ('dataset_rr')
-    level_keys = list(f[select_groups].keys())
-    dataset_rr = {}
-    for i in level_keys:
-        level4_keys = list(f[select_groups][i].keys())
-        temp_2 = {}
-
-        for d in level4_keys:
-            data_key ='/'+select_groups+'/'+i+'/'+d
-        
-            rgb = np.array(f[data_key])
-            try:
-                rgb_type = rgb.dtype.name
-                if 'bytes' in rgb_type:
-                    temp_2[d] = utils_si.h5_tostring(rgb)
-                else:
+    if 'dataset_rr' in f:
+        select_groups = ('dataset_rr')
+        level_keys = list(f[select_groups].keys())
+        dataset_rr = {}
+        for i in level_keys:
+            level4_keys = list(f[select_groups][i].keys())
+            temp_2 = {}
+    
+            for d in level4_keys:
+                data_key ='/'+select_groups+'/'+i+'/'+d
+            
+                rgb = np.array(f[data_key])
+                try:
+                    rgb_type = rgb.dtype.name
+                    if 'bytes' in rgb_type:
+                        temp_2[d] = utils_si.h5_tostring(rgb)
+                    else:
+                        temp_2[d] = rgb
+                except:
                     temp_2[d] = rgb
-            except:
-                temp_2[d] = rgb
-        dataset_rr[i] = temp_2
+            dataset_rr[i] = temp_2
+    else:
+        dataset_rr=None
         
     # Parameters
     select_groups = ('parameters')
