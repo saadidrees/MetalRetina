@@ -72,9 +72,20 @@ def getModelParams(fname_modelFolder):
     except:
         rgb = re.compile(r'C2-(\d+)-(\d+)')
         rgb = rgb.search(fname_modelFolder)
+        params['C2_3d'] = int(0) 
+    
+    if rgb !=None:
+        params['C2_n'] = int(rgb.group(1))
+        params['C2_s'] = int(rgb.group(2))
+        params['chan2_n'] = int(rgb.group(1))
+        params['filt2_size'] = int(rgb.group(2))
+    else:
+        params['C2_n']=0
+        params['C2_s'] = 0
         params['C2_3d'] = int(0)
-    params['C2_n'] = int(rgb.group(1))
-    params['C2_s'] = int(rgb.group(2))
+        params['chan2_n'] = 0
+        params['filt2_size'] =0
+
     
     try:
         rgb = re.compile(r'C3-(\d+)-(\d+)-(\d+)')
@@ -87,6 +98,8 @@ def getModelParams(fname_modelFolder):
         if rgb is not None:
             params['C3_n'] = int(rgb.group(1))
             params['C3_s'] = int(rgb.group(2))
+            params['chan3_n'] = int(rgb.group(1))
+            params['filt3_size'] = int(rgb.group(2))
     
     try:
         rgb = re.compile(r'C4-(\d+)-(\d+)-(\d+)')
@@ -100,20 +113,27 @@ def getModelParams(fname_modelFolder):
         params['C4_n']=0
         params['C4_s'] = 0
         params['C4_3d'] = int(0)
+        params['chan4_n'] = 0
+        params['filt4_size'] =0
+
 
     else:
         params['C4_n'] = int(rgb.group(1))
         params['C4_s'] = int(rgb.group(2))
         params['C4_3d'] = int(0)
+        params['chan4_n'] = int(rgb.group(1))
+        params['filt4_size'] = int(rgb.group(2))
 
 
     rgb = re.compile(r'BN-(\d+)')
     rgb = rgb.search(fname_modelFolder)
     params['BN'] = int(rgb.group(1))
+    params['BatchNorm'] = int(rgb.group(1))
 
     rgb = re.compile(r'MP-(\d+)')
     rgb = rgb.search(fname_modelFolder)
     params['MP'] = int(rgb.group(1))
+    params['MaxPool'] = int(rgb.group(1))
 
     rgb = re.compile(r'TR-(\d+)')
     rgb = rgb.search(fname_modelFolder)
@@ -140,7 +160,6 @@ def getModelParams(fname_modelFolder):
         params['LR'] = float(rgb.group(1))
         
     return params
-
 
 def model_summary(mdl,inp_shape,console_kwargs={'width':180}):
     from flax.linen import summary
@@ -1544,24 +1563,11 @@ class LNLN2(nn.Module):
         y = jnp.moveaxis(inputs, 1, -1)  # (batch, time, height, width, channels) -> (batch, height, width, time)
         y = y-0.5
 
-        # First LN layer: separate subunits (linear + nonlinearity)
         y = nn.Conv(features=self.chan1_n, kernel_size=(self.filt1_size,self.filt1_size),padding='SAME', kernel_init=glorot_uniform())(y)
-        # if self.BatchNorm:
-        #     y = nn.LayerNorm(use_bias=True,use_scale=True,feature_axes=-1,reduction_axes=(1,2,3))(y)
-
         y = SubunitTrainableAF()(y)
-        # y = nn.relu(y)
 
-        # Second LN layer: integrate subunit outputs linearly
         y = nn.Conv(features=self.nout, kernel_size=(1,1),padding='SAME', kernel_init=he_normal(),name='output')(y)
-
-        # if self.BatchNorm:
-        #     y = nn.LayerNorm(use_bias=True, use_scale=True, feature_axes=-1)(y)
-
         outputs = y
-        # outputs = nn.softplus(y)
-        # outputs = TrainableAF()(y)
-
 
         self.sow('intermediates', 'dense_activations', outputs)
 

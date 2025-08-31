@@ -157,7 +157,7 @@ def pred_psfavg(y_pred,coords,segment_size,MAX_RGCS=MAX_RGCS):
     y_pred_allpixs = y_pred[:,spatial_y,spatial_x,type_idx].T
     # y_pred_allpixs = y_pred_allpixs*mask_tr[:,None]       # There's no need for this as segment_sum handles it because we have -1 for coords not to be used
     y_pred_sumsegs = jax.ops.segment_sum(y_pred_allpixs,u_id,MAX_RGCS)
-    y_pred_units = y_pred_sumsegs / segment_size  # Start from 1st index because index 0 is the ones we dont want to compare as thats padded
+    y_pred_units = y_pred_sumsegs / segment_size  
         
     return y_pred_units.T
 
@@ -678,13 +678,18 @@ def process_single_batch(state, X_batch, y_batch, coords, segment_size, N_val, m
         y_pred_batch, y_batch, coords, segment_size, N_val, mask_val
     )
     
-    y_units_b = y_units_b[:, :N_val]
-    y_pred_units_b = y_pred_units_b[:, :N_val]
+    y_units_b = y_units_b[:,:N_val]
+    y_pred_units_b = y_pred_units_b[:,:N_val]
 
     return loss_batch, y_pred_batch, y_batch, y_pred_units_b, y_units_b
 
 def eval_step_dl(state, batch_val, dinf_batch_val, n_batches=1e5):
-    """Iterates over the PyTorch DataLoader and calls the JIT-compiled function."""
+    """Iterates over the PyTorch DataLoader and calls the JIT-compiled function
+    
+    state = mdl_state
+    batch_val = dataloader_val
+    n_batches=1e5
+    """
     N_val = dinf_batch_val['N_val']
     mask_val = dinf_batch_val['maskunits_val']
     coords = dinf_batch_val['umaskcoords_val']
@@ -1073,10 +1078,10 @@ def train_step(mdl_state,weights_output,config,training_params,dataloader_train,
               %(epoch+1,loss_currEpoch_master,loss_currEpoch_train,fev_train_med,predCorr_train_med,loss_currEpoch_val,fev_val_med,predCorr_val_med,current_lr))
         
             
-        # fig,axs = plt.subplots(2,1,figsize=(20,10));axs=np.ravel(axs);fig.suptitle('Epoch: %d'%(epoch+1))
-        # axs[0].plot(y_train_units[:200,2]);axs[0].plot(y_pred_train_units[:200,10]);axs[0].set_title('Train')
+        fig,axs = plt.subplots(2,1,figsize=(20,10));axs=np.ravel(axs);fig.suptitle('Epoch: %d'%(epoch+1))
+        axs[0].plot(y_train_units[:200,2]);axs[0].plot(y_pred_train_units[:200,10]);axs[0].set_title('Train')
         # axs[1].plot(y_units[:,10]);axs[1].plot(y_pred_units[:,10]);axs[1].set_title('Validation')
-        # plt.show()
+        plt.show()
         # plt.close()
         
 

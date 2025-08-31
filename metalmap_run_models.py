@@ -629,13 +629,14 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     dict_params['nout'] = len(cell_types_unique)        
     
     # %
+    
+    
     if CONTINUE_TRAINING==1 or nb_epochs==0:       # if to continue a halted or previous training
-        allEpochs = glob.glob(path_model_save+'/epoch*')
-        allEpochs.sort()
-        if len(allEpochs)!=0:
-            lastEpochFile = os.path.split(allEpochs[-1])[-1]
-            rgb = re.compile(r'epoch-(\d+)')
-            initial_epoch = int(rgb.search(lastEpochFile)[1])
+        allSteps = glob.glob(path_model_save+'/step*')        
+        step_numbers = np.sort(np.asarray([int(re.search(r'step-(\d+)', s).group(1)) for s in allSteps]))
+        step_numbers.sort()
+        if len(step_numbers)!=0:
+            initial_epoch = step_numbers[-1]
         else:
             initial_epoch = 0
 
@@ -881,7 +882,7 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
     
         print('-----EVALUATING PERFORMANCE-----')
         i=nb_cps-1
-        for i in range(0,nb_cps):
+        for i in [nb_cps-1]: #range(0,nb_cps):
             print('evaluating checkpoint %d of %d | Step %d'%(i,nb_cps,step_numbers[i]))
             # weight_file = 'weights_'+fname_model+'_epoch-%03d.h5' % (i+1)
             weight_fold = 'step-%03d' % step_numbers[i]  # 'file_name_{}_{:.03f}.png'.format(f_nm, val)
@@ -968,6 +969,8 @@ def run_model(expFold,mdl_name,path_model_save_base,fname_data_train_val_test,
         #     fev_val_cb, _, predCorr_val_cb, _ = model_evaluate_new(obs_rate_allStimTrials[idx_cb],pred_rate[idx_cb],temporal_width_eval,lag=int(samps_shift),obs_noise=obs_noise)
         #     print('FEV_NATSTIM = %0.2f' %(np.nanmean(fev_val_natstim)*100))
         #     print('FEV_CB = %0.2f' %(np.nanmean(fev_val_cb)*100))
+
+    u=0;plt.plot(y_units[:500,u]);plt.plot(pred_rate_units[:500,u]);plt.show()
 
 # %% Test
 #     # offset = 3000

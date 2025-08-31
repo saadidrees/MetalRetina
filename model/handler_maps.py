@@ -60,10 +60,16 @@ def bytestostring(arr):
 
 def normalize_responses(data,norm_val):
     y = data.y
+    y = np.moveaxis(y,1,0)
+    y_shapeorig = y.shape
+    y = y.reshape(y.shape[0],-1)
     norm_val = np.maximum(norm_val, 1e-6)
-    y = y/norm_val[None,:]
+    y = y/norm_val[:,None]
+    y = y.reshape(y_shapeorig)
+    y = np.moveaxis(y,0,1)
+    data=data._replace(y=y)
     
-    return Exptdata_spikes(data.X,y,data.spikes)
+    return data
 
 def arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf_params,info_unitSplit=None,BUILD_MAPS=False,MODE='training',NORMALIZE_RESP=1):
     """
@@ -82,7 +88,7 @@ def arrange_data_formaps(exp,data_train,data_val,parameters,frac_train_units,psf
         #     max_resp = np.max(rgb,axis=0)
         #     data_val = normalize_responses(data_val,max_resp)
         # else:
-        # rgb = np.concatenate((data_train.y,data_val.y),axis=0)
+            # rgb = np.concatenate((data_train.y,data_val.y),axis=0)
         rgb1 = np.moveaxis(data_train.y,1,0).reshape(data_train.y.shape[1],-1).max(axis=-1)
         rgb2 = np.moveaxis(data_val.y,1,0).reshape(data_val.y.shape[1],-1).max(axis=-1)
         max_resp = np.max(np.concatenate((rgb1[:,None],rgb2[:,None]),axis=-1),axis=-1)
@@ -327,7 +333,7 @@ def maps_validation_split(data_train,data_val,idx_train,idx_val,unit_locs,unit_t
     return X_y_train,X_y_val
 
 
-def unit_psf(data,unit_locs,unit_types,psf_params,BUILD_MAPS=True):
+def unit_psf(data,unit_locs,unit_types,psf_params,BUILD_MAPS=True,ONLY_COORDS=False):
     """
     data = data_train
     unit_locs=dinf['unit_locs'][idx_units_train]
@@ -336,21 +342,19 @@ def unit_psf(data,unit_locs,unit_types,psf_params,BUILD_MAPS=True):
     method = psf_params['method']
     """
     
-    # X = data.X
-    y = data.y
-    spikes = data.spikes
+    if ONLY_COORDS==False:
+        y = data.y
+        frame_shape = [data.X.shape[1],data.X.shape[2]]
+    else:
+        frame_shape = [psf_params['X_rows'],psf_params['X_cols']]
+        BUILD_MAPS=False
+
+
     pixel_neigh=psf_params['pixel_neigh']
     method = psf_params['method']
 
-    frame_shape = [data.X.shape[1],data.X.shape[2]]
-
     
-    # Fix for boundary cells
-    # unit_locs[unit_locs[:,0]>=X.shape[2],0] = X.shape[2]-1
-    # unit_locs[unit_locs[:,1]>=X.shape[1],1] = X.shape[1]-1
-    # unit_locs[unit_locs<0]=0
-    
-    u=0
+    u=28
     test=[]
     unit_masks = []
     unit_masks_coords = np.zeros((0,4),dtype='int')
@@ -358,21 +362,36 @@ def unit_psf(data,unit_locs,unit_types,psf_params,BUILD_MAPS=True):
         u_type_idx = unit_types[u]-1
         loc_mask = np.zeros((frame_shape[0],frame_shape[1]),dtype=bool)
 
+        if np.all(unit_locs[u]-pixel_neigh)>0 and np.all((unit_locs[u]+pixel_neigh+1)<[frame_shape[1],frame_shape[0]]):
+            rgb_loc = unit_locs[u]
+        else:
+            rgb_loc = unit_locs[u]
+            if rgb_loc[1]+pixel_neigh+1 > frame_shape[0]:
+                rgb_loc[1] = rgb_loc[1]-pixel_neigh-1
+            elif rgb_loc[1]-pixel_neigh-1 < 0:
+                rgb_loc[1] = rgb_loc[1]+pixel_neigh+1
+            
+            if rgb_loc[0]+pixel_neigh+1 > frame_shape[1]:
+                rgb_loc[0] = rgb_loc[0]-pixel_neigh-1
+            elif rgb_loc[0]-pixel_neigh-1 < 0:
+                rgb_loc[0] = rgb_loc[0]+pixel_neigh+1
+
         if method=='square':
-            # if np.all(unit_locs[u]-pixel_neigh)>0 and np.all((unit_locs[u]+pixel_neigh+1)<[X.shape[2],X.shape[1]]):
-            loc_mask[unit_locs[u,1]-pixel_neigh:unit_locs[u,1]+pixel_neigh+1,unit_locs[u,0]-pixel_neigh:unit_locs[u,0]+pixel_neigh+1] = True
+                
+            loc_mask[rgb_loc[1]-pixel_neigh:rgb_loc[1]+pixel_neigh+1,rgb_loc[0]-pixel_neigh:rgb_loc[0]+pixel_neigh+1] = True
             segment_size = int((pixel_neigh+1+pixel_neigh)*(pixel_neigh+1+pixel_neigh))
             
         elif method=='cross':
             # if np.all(unit_locs[u]-pixel_neigh)>0 and np.all((unit_locs[u]+pixel_neigh+1)<[X.shape[2],X.shape[1]]):
-            loc_mask[unit_locs[u,1]-pixel_neigh:unit_locs[u,1]+pixel_neigh+1,unit_locs[u,0]] = True
-            loc_mask[unit_locs[u,1],unit_locs[u,0]-pixel_neigh:unit_locs[u,0]+pixel_neigh+1] = True
+            
+            loc_mask[rgb_loc[1]-pixel_neigh:rgb_loc[1]+pixel_neigh+1,rgb_loc[0]] = True
+            loc_mask[rgb_loc[1],rgb_loc[0]-pixel_neigh:rgb_loc[0]+pixel_neigh+1] = True
             segment_size = int((4*pixel_neigh)+1)
 
         test.append(loc_mask.sum())
         
         if BUILD_MAPS==True:
-            rgb = y[:,unit_locs[u,1],unit_locs[u,0],u_type_idx]
+            rgb = y[:,rgb_loc[1],rgb_loc[0],u_type_idx]
             y[:,loc_mask,u_type_idx] = rgb[:,None]
         
         
@@ -385,11 +404,13 @@ def unit_psf(data,unit_locs,unit_types,psf_params,BUILD_MAPS=True):
         
                 
     unit_masks = np.asarray(unit_masks)
+    unit_locs[u]=rgb_loc
    
     cell_types_unique = np.unique(unit_types)
     mask_unitloc = get_maskunitloc(unit_locs,unit_types,cell_types_unique,frame_shape)
     
-    data = Exptdata_spikes(data.X,y,spikes)
+    if ONLY_COORDS==False:
+        data = data._replace(y=y)
     
     return data,unit_masks,unit_masks_coords,mask_unitloc,segment_size
 
@@ -631,10 +652,11 @@ def prepare_metaldataset(data_train,umaskcoords_tr_tr,umaskcoords_tr_val,frac_st
     
     
     nsamps_tr = int(np.floor(frac_stim_train*len(np.arange(data_train.X.shape[0]))))
+    nsamps_val = data_train.X.shape[0]-nsamps_tr
     train_y_tr = data_train.y[:nsamps_tr].copy()
-    train_y_val = data_train.y[-nsamps_tr:].copy()
+    train_y_val = data_train.y[-nsamps_val:].copy()
 
-    assert train_y_tr.shape[0] == train_y_val.shape[0],'trtr and trval lengths not the same'
+    # assert train_y_tr.shape[0] == train_y_val.shape[0],'trtr and trval lengths not the same'        # But why is this important?
 
     if BUILD_MAPS==True:
         t=0
@@ -660,7 +682,7 @@ def prepare_metaldataset(data_train,umaskcoords_tr_tr,umaskcoords_tr_val,frac_st
 
 
     data_tr_tr = Exptdata(data_train.X[:nsamps_tr],train_y_tr)
-    data_tr_val = Exptdata(data_train.X[-nsamps_tr:],train_y_val)
+    data_tr_val = Exptdata(data_train.X[-nsamps_val:],train_y_val)
 
     return data_tr_tr,data_tr_val
 
