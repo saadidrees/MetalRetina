@@ -10,7 +10,7 @@ Created on Wed Nov  1 16:29:42 2023
 def fr_cones_gammasmall():
     pr_params = {}
     pr_params['sigma'] = 2.2
-    pr_params['sigma_scaleFac'] = 10.
+    pr_params['sigma_scaleFac'] = 10. 
     pr_params['sigma_trainable'] = False
     
     pr_params['phi'] = 2.2
