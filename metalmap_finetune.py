@@ -102,8 +102,8 @@ def run_finetune(ft_expDate,path_pretrained,ft_fname_data_train_val_test,ft_mdl_
     frac_train_units = parameters['frac_train_units']
     
     # Setting MODE to validation ensures that Only stim is different in Train/Val sets and same RGCs are used
-    data_train,data_val,dinf = handler_maps.arrange_data_formaps(ft_expDate,data_train,data_val,parameters,frac_train_units,psf_params=psf_params,info_unitSplit=None,
-                                                                 BUILD_MAPS=BUILD_MAPS,MODE='validation',NORMALIZE_RESP=0)       
+    data_train,data_val,dinf = handler_maps.arrange_data_formaps(ft_expDate,data_train,data_val,parameters,frac_train_units,psf_params=psf_params,info_unitSplit=info_unitSplit,
+                                                                 BUILD_MAPS=BUILD_MAPS,MODE='training',NORMALIZE_RESP=1)       
     
     dinf['unit_locs_train'] = dinf['unit_locs'][dinf['idx_units_train']]
     dinf['unit_types_train'] = dinf['unit_types'][dinf['idx_units_train']]
@@ -329,7 +329,9 @@ def run_finetune(ft_expDate,path_pretrained,ft_fname_data_train_val_test,ft_mdl_
         last_cp = nb_cps-1
     assert np.isnan(weights_allSteps[last_cp]['output']['kernel']).sum()==0, 'Model checkpoint has NaN values'
     
-    last_cp = step_numbers[last_cp]
+    # last_cp = step_numbers[last_cp]
+    last_cp = step_numbers[7]
+
     
     fname_latestWeights = os.path.join(path_pretrained,'step-%03d' % last_cp)
     
@@ -354,7 +356,7 @@ def run_finetune(ft_expDate,path_pretrained,ft_fname_data_train_val_test,ft_mdl_
     ft_model_params['filt_temporal_width'] = temporal_width
     ft_model_params['nout'] = len(cell_types_unique)        
 
-    ft_path_model_save = os.path.join(ft_path_model_base,ft_fname_model)   # the model save directory is the fname_model appened to save path
+    ft_path_model_save = os.path.join(ft_path_model_base,ft_expDate,ft_fname_model)   # the model save directory is the fname_model appened to save path
 
     if not os.path.isabs(ft_path_model_save):
         ft_path_model_save = os.path.join(os.getcwd(),ft_path_model_save)
@@ -377,8 +379,8 @@ def run_finetune(ft_expDate,path_pretrained,ft_fname_data_train_val_test,ft_mdl_
     fname_excel = 'performance_'+ft_fname_model+'.csv'
 
     transition_steps = int(n_batches*1)# 20000
-    # lr_schedule = optax.exponential_decay(init_value=ft_lr,transition_steps=transition_steps,decay_rate=0.1,staircase=True,transition_begin=0,end_value=ft_lr/10)
-    lr_schedule = optax.constant_schedule(ft_lr)
+    lr_schedule = optax.exponential_decay(init_value=ft_lr,transition_steps=transition_steps,decay_rate=0.5,staircase=True,transition_begin=0,end_value=ft_lr/100)
+    # lr_schedule = optax.constant_schedule(ft_lr)
 
     total_steps = n_batches*nb_epochs
     rgb_lrs = [lr_schedule(i) for i in range(total_steps)]
@@ -392,11 +394,18 @@ def run_finetune(ft_expDate,path_pretrained,ft_fname_data_train_val_test,ft_mdl_
         ft_pr_params_name = 'fr_cones_gammalarge'
         pr_params_fun = getattr(model.prfr_params,ft_pr_params_name)
         ft_pr_params = pr_params_fun()
-        ft_pr_params['sigma_trainable']=True
-        ft_pr_params['phi_trainable']=True
-        ft_pr_params['eta_trainable']=True
-        ft_pr_params['beta_trainable']=True
+        ft_pr_params['sigma_trainable']=False
+        ft_pr_params['phi_trainable']=False
+        ft_pr_params['eta_trainable']=False
+        ft_pr_params['beta_trainable']=False
         ft_pr_params['gamma_trainable']=False
+        ft_pr_params['cgmp2cur_trainable'] = False
+        ft_pr_params['cgmphill_trainable'] = False
+        ft_pr_params['cdark_trainable'] = False
+        ft_pr_params['hillcoef_trainable'] = False
+        ft_pr_params['hillaffinity_trainable'] = False
+        ft_pr_params['gdark_trainable'] = False
+
         ft_model_params['pr_params'] = ft_pr_params
 
     # We initialize a new instance of the model of type ft_mdl_name
@@ -408,8 +417,8 @@ def run_finetune(ft_expDate,path_pretrained,ft_fname_data_train_val_test,ft_mdl_
 
 
     # % Select layers to finetune
-    # layers_finetune = [key for key in pre_mdl_state.params]  # This selects all layers in the pretrained model
-    layers_finetune = ['PRFR_0',]        # Or you can select manually
+    layers_finetune = [key for key in pre_mdl_state.params]  # This selects all layers in the pretrained model
+    # layers_finetune = ['PRFR_0','LayerNorm_0']        # Or you can select manually
     ft_params_fixed,ft_params_trainable = train_metalmaps.split_dict(pre_mdl_state.params,layers_finetune)  # And then see which layers will be fixed and which will be finetuned
 
     # Do this if we want the PR layer to also be trainable
