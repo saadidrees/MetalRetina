@@ -53,6 +53,8 @@ def getModelParams(fname_modelFolder):
     rgb = re.compile(r'T-(\d+)')
     rgb = rgb.search(fname_modelFolder)
     params['T'] = int(rgb.group(1))
+    params['filt_temporal_width'] = int(rgb.group(1))
+
 
     try:
         rgb = re.compile(r'C1-(\d+)-(\d+)-(\d+)')
@@ -64,7 +66,9 @@ def getModelParams(fname_modelFolder):
         params['C1_3d'] = int(0)
     params['C1_n'] = int(rgb.group(1))
     params['C1_s'] = int(rgb.group(2))
-    
+    params['chan1_n'] = int(rgb.group(1))
+    params['filt1_size'] = int(rgb.group(2))
+
     try:
         rgb = re.compile(r'C2-(\d+)-(\d+)-(\d+)')
         rgb = rgb.search(fname_modelFolder)
@@ -72,7 +76,7 @@ def getModelParams(fname_modelFolder):
     except:
         rgb = re.compile(r'C2-(\d+)-(\d+)')
         rgb = rgb.search(fname_modelFolder)
-        params['C2_3d'] = int(0) 
+        params['C2_3d'] = int(0)
     
     if rgb !=None:
         params['C2_n'] = int(rgb.group(1))
@@ -86,7 +90,7 @@ def getModelParams(fname_modelFolder):
         params['chan2_n'] = 0
         params['filt2_size'] =0
 
-    
+
     try:
         rgb = re.compile(r'C3-(\d+)-(\d+)-(\d+)')
         rgb = rgb.search(fname_modelFolder)
@@ -100,6 +104,7 @@ def getModelParams(fname_modelFolder):
             params['C3_s'] = int(rgb.group(2))
             params['chan3_n'] = int(rgb.group(1))
             params['filt3_size'] = int(rgb.group(2))
+
     
     try:
         rgb = re.compile(r'C4-(\d+)-(\d+)-(\d+)')
@@ -123,6 +128,7 @@ def getModelParams(fname_modelFolder):
         params['C4_3d'] = int(0)
         params['chan4_n'] = int(rgb.group(1))
         params['filt4_size'] = int(rgb.group(2))
+
 
 
     rgb = re.compile(r'BN-(\d+)')
