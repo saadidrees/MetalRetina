@@ -398,7 +398,7 @@ def run_finetune(ft_expDate,path_pretrained,ft_fname_data_train_val_test,ft_mdl_
         ft_pr_params['phi_trainable']=True
         ft_pr_params['eta_trainable']=True
         ft_pr_params['beta_trainable']=True
-        ft_pr_params['gamma_trainable']=False
+        ft_pr_params['gamma_trainable']=True
         ft_pr_params['cgmp2cur_trainable'] = False
         ft_pr_params['cgmphill_trainable'] = False
         ft_pr_params['cdark_trainable'] = False
@@ -555,8 +555,8 @@ def run_finetune(ft_expDate,path_pretrained,ft_fname_data_train_val_test,ft_mdl_
     axs[1].plot(step_numbers[cps_sel],fev_medianUnits_allEpochs[:len(cps_sel)])
     axs[1].set_xlabel('Training steps');axs[1].set_ylabel('FEV'); 
 
-    idx_best_step = len(cps_sel)-1
-    weight_fold = 'step-%03d' %(step_numbers[cps_sel[idx_best_step]])  # 'file_name_{}_{:.03f}.png'.format(f_nm, val)
+    idx_best_step = np.argmax(predCorr_medianUnits_allEpochs) #len(cps_sel)-1
+    weight_fold = 'step-%03d' %(step_numbers[cps_sel[idx_best_step-1]])  # 'file_name_{}_{:.03f}.png'.format(f_nm, val)
     weight_fold = os.path.join(ft_path_model_save,weight_fold)
     raw_restored = orbax_checkpointer.restore(weight_fold)
     mdl_state_eval = train_metalmaps.load(ft_mdl,raw_restored['model'],ft_lr)
