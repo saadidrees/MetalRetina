@@ -1090,7 +1090,7 @@ def train_step(mdl_state,weights_output,config,training_params,dataloader_train,
 
 # %% Finetuning
 MODE = 'MAP'
-LOSS_FUN_FT = 'madactivity'
+LOSS_FUN_FT = 'mad'
 
 @jax.jit
 def ft_calc_loss(y_pred,y,coords,segment_size,N_tr,mask_tr):
