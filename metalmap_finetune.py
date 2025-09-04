@@ -287,7 +287,7 @@ def run_finetune(ft_expDate,path_pretrained,ft_fname_data_train_val_test,ft_mdl_
     
     data_val = dict_val[dset]
     RetinaDataset_val = dataloaders.RetinaDataset(data_val.X,data_val.y,transform=None)
-    dataloader_val = DataLoader(RetinaDataset_val,batch_size=256,collate_fn=dataloaders.jnp_collate);
+    dataloader_val = DataLoader(RetinaDataset_val,batch_size=128,collate_fn=dataloaders.jnp_collate);
     # batch = next(iter(dataloader_val));a,b=batch
       
     n_batches = len(dataloader_train)#np.ceil(len(data_train.X)/bz)
@@ -379,8 +379,8 @@ def run_finetune(ft_expDate,path_pretrained,ft_fname_data_train_val_test,ft_mdl_
     fname_excel = 'performance_'+ft_fname_model+'.csv'
 
     transition_steps = int(n_batches*1)# 20000
-    lr_schedule = optax.exponential_decay(init_value=ft_lr,transition_steps=transition_steps,decay_rate=0.5,staircase=True,transition_begin=0,end_value=ft_lr/100)
-    # lr_schedule = optax.constant_schedule(ft_lr)
+    # lr_schedule = optax.exponential_decay(init_value=ft_lr,transition_steps=transition_steps,decay_rate=0.5,staircase=True,transition_begin=0,end_value=ft_lr/100)
+    lr_schedule = optax.constant_schedule(ft_lr)
 
     total_steps = n_batches*nb_epochs
     rgb_lrs = [lr_schedule(i) for i in range(total_steps)]
@@ -394,10 +394,10 @@ def run_finetune(ft_expDate,path_pretrained,ft_fname_data_train_val_test,ft_mdl_
         ft_pr_params_name = 'fr_cones_gammalarge'
         pr_params_fun = getattr(model.prfr_params,ft_pr_params_name)
         ft_pr_params = pr_params_fun()
-        ft_pr_params['sigma_trainable']=False
-        ft_pr_params['phi_trainable']=False
-        ft_pr_params['eta_trainable']=False
-        ft_pr_params['beta_trainable']=False
+        ft_pr_params['sigma_trainable']=True
+        ft_pr_params['phi_trainable']=True
+        ft_pr_params['eta_trainable']=True
+        ft_pr_params['beta_trainable']=True
         ft_pr_params['gamma_trainable']=False
         ft_pr_params['cgmp2cur_trainable'] = False
         ft_pr_params['cgmphill_trainable'] = False
@@ -418,7 +418,7 @@ def run_finetune(ft_expDate,path_pretrained,ft_fname_data_train_val_test,ft_mdl_
 
     # % Select layers to finetune
     layers_finetune = [key for key in pre_mdl_state.params]  # This selects all layers in the pretrained model
-    # layers_finetune = ['PRFR_0','LayerNorm_0']        # Or you can select manually
+    # layers_finetune = ['PRFR_0','LayerNorm_0','output','LayerNorm_4','TrainableAF_3']        # Or you can select manually
     ft_params_fixed,ft_params_trainable = train_metalmaps.split_dict(pre_mdl_state.params,layers_finetune)  # And then see which layers will be fixed and which will be finetuned
 
     # Do this if we want the PR layer to also be trainable
@@ -480,7 +480,6 @@ def run_finetune(ft_expDate,path_pretrained,ft_fname_data_train_val_test,ft_mdl_
             
     t_elapsed = time.time()-t
     print('time elapsed: '+str(t_elapsed)+' seconds')
-    
     
     # %% Evaluate performance
     
